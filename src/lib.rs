@@ -1,6 +1,3 @@
-#![feature(cell_extras)]
-
-
 #[macro_export]
 macro_rules! rental{
 	{
@@ -41,7 +38,7 @@ macro_rules! rental{
 
 
 		impl<$($lt, )* $($param, )*> $rent<'static $(, $lt)*, $owner_ty $(, $param)*> {
-			#[allow(non_camel_case_types)]
+			#[allow(dead_code)]
 			pub fn new<F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> $rental_ty>(mut owner: $owner_ty, f: F)
 				-> $rent<'static $(, $lt)*, $owner_ty $(, $param)*>
 			{
@@ -55,7 +52,7 @@ macro_rules! rental{
 			}
 
 
-			#[allow(non_camel_case_types)]
+			#[allow(dead_code)]
 			pub fn try_new<E, F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(mut owner: $owner_ty, f: F)
 				-> Result<$rent<'static $(, $lt)*, $owner_ty $(, $param)*>, ($owner_ty, E)>
 			{
@@ -72,16 +69,19 @@ macro_rules! rental{
 			}
 
 
+			#[allow(dead_code)]
 			pub fn rental<'owner>(&'owner self) -> &'owner $rental_ty {
 				self.rental.as_ref().unwrap()
 			}
 
 
+			#[allow(dead_code)]
 			pub fn rental_mut<'owner>(&'owner mut self) -> &'owner mut $rental_ty {
 				unsafe { mem::transmute(self.rental.as_mut().unwrap()) }
 			}
 
 
+			#[allow(dead_code)]
 			pub fn into_owner(mut self) -> $owner_ty {
 				self.owner.take().unwrap()
 			}
@@ -114,7 +114,7 @@ macro_rules! rental{
 
 
 		impl<$($lt, )* $($param, )*> $rent<'static $(, $lt)*, $owner_ty $(, $param)*> {
-			#[allow(non_camel_case_types)]
+			#[allow(dead_code)]
 			pub fn new<F: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> $rental_ty>(owner: $owner_ty, f: F)
 				-> $rent<'static $(, $lt)*, $owner_ty $(, $param)*>
 			{
@@ -128,7 +128,7 @@ macro_rules! rental{
 			}
 
 
-			#[allow(non_camel_case_types)]
+			#[allow(dead_code)]
 			pub fn try_new<E, F: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(owner: $owner_ty, f: F)
 				-> Result<$rent<'static $(, $lt)*, $owner_ty $(, $param)*>, ($owner_ty, E)>
 			{
@@ -145,16 +145,19 @@ macro_rules! rental{
 			}
 
 
+			#[allow(dead_code)]
 			pub fn owner(&self) -> &$owner_ty {
 				self.owner.as_ref().unwrap()
 			}
 
 
+			#[allow(dead_code)]
 			pub fn rental<'owner>(&'owner self) -> &'owner $rental_ty {
 				self.rental.as_ref().unwrap()
 			}
 
 
+			#[allow(dead_code)]
 			pub fn into_owner(mut self) -> $owner_ty {
 				self.owner.take().unwrap()
 			}
@@ -202,14 +205,6 @@ macro_rules! rental{
 }
 
 
-rental!{
-	mod rent_refs {
-		pub struct RentRef<T> [where T: 'static] (Box<::std::cell::RefCell<T>>, Box<::std::cell::Ref<'owner, T>>);
-		pub struct RentRefMut<T> [where T: 'static] (mut Box<::std::cell::RefCell<T>>, Box<::std::cell::RefMut<'owner, T>>);
-	}
-}
-
-
 pub unsafe trait FixedDeref: ::std::ops::Deref { }
 
 unsafe impl<'t, T: ?Sized> FixedDeref for &'t T { }
@@ -227,3 +222,24 @@ unsafe impl<'t, T: ?Sized> FixedDeref for ::std::cell::RefMut<'t, T> { }
 unsafe impl<'t, T: ?Sized> FixedDeref for ::std::sync::MutexGuard<'t, T> { }
 unsafe impl<'t, T: ?Sized> FixedDeref for ::std::sync::RwLockReadGuard<'t, T> { }
 unsafe impl<'t, T: ?Sized> FixedDeref for ::std::sync::RwLockWriteGuard<'t, T> { }
+
+
+#[cfg(test)]
+mod test {
+	use ::std::cell::RefCell;
+
+
+	rental!{
+		mod rental {
+			pub struct RentRef<T> [where T: 'static] (Box<::std::cell::RefCell<T>>, Box<::std::cell::Ref<'owner, T>>);
+			pub struct RentRefMut<T> [where T: 'static] (mut Box<::std::cell::RefCell<T>>, Box<::std::cell::RefMut<'owner, T>>);
+		}
+	}
+
+
+	#[test]
+	fn instantiate() {
+		let _rent = rental::RentRef::new(Box::new(RefCell::new(5)), |r| Box::new(r.borrow()));
+		let _rent_mut = rental::RentRefMut::new(Box::new(RefCell::new(12)), |r| Box::new(r.borrow_mut()));
+	}
+}
