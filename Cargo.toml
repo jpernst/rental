@@ -1,6 +1,7 @@
 [package]
 name = "rental"
 version = "0.1.0"
+license = "MIT/Apache-2.0"
 authors = ["Jameson Ernst <jameson@jpernst.com>"]
-
-[dependencies]
+description = "A macro to generate structs that borrow themselves."
+repository = "https://github.com/jpernst/rental"
