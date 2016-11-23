@@ -1,0 +1,6 @@
+[package]
+name = "rental"
+version = "0.1.0"
+authors = ["Jameson Ernst <jameson@jpernst.com>"]
+
+[dependencies]
