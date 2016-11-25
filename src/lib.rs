@@ -11,28 +11,25 @@ macro_rules! rental{
 			use ::std::result::Result;
 			use ::std::mem;
 
-
 			rental!{@ITEMS $($items)*}
 		}
 	};
 
 
 	{
-		@ITEMS pub struct $rent:ident<$([$lt:tt]),*$(,)* $(($param:ident)),*> [$($clause:tt)*] (
+		@ITEMS pub struct $rent:ident<'owner $(, $param:tt)*> [$($clause:tt)*] (
 			mut $owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
-
-
 		$($rest:tt)*
 	} => {
-		pub struct $rent<'owner $(, $lt)* $(, $param: 'owner)*> $($clause)* {
+		pub struct $rent<'owner $(, $param)*> $($clause)* {
 			owner: Option<$owner_ty>,
 			rental: Option<$rental_ty>,
 		}
 
 
-		impl<'rent $(, $lt)* $(, $param)*> $rent<'rent $(, $lt)* $(, $param)*> {
+		impl<'rent $(, $param)*> $rent<'rent $(, $param)*> {
 			#[allow(dead_code)]
 			fn static_assert_valid_owner_ty() {
 				$crate::static_assert_fixed_deref_mut::<$owner_ty>();
@@ -41,7 +38,7 @@ macro_rules! rental{
 
 			#[allow(dead_code)]
 			pub fn new<F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> $rental_ty>(mut owner: $owner_ty, f: F)
-				-> $rent<'static $(, $lt)* $(, $param)*>
+				-> $rent<'static $(, $param)*>
 			{
 				$rent{
 					rental: unsafe {
@@ -55,7 +52,7 @@ macro_rules! rental{
 
 			#[allow(dead_code)]
 			pub fn try_new<E, F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(mut owner: $owner_ty, f: F)
-				-> Result<$rent<'static $(, $lt)* $(, $param)*>, ($owner_ty, E)>
+				-> Result<$rent<'static $(, $param)*>, ($owner_ty, E)>
 			{
 				Ok($rent{
 					rental: unsafe {
@@ -67,6 +64,14 @@ macro_rules! rental{
 					},
 					owner: Some(owner),
 				})
+			}
+
+
+			#[allow(dead_code)]
+			pub fn rent<'s, F, R>(&'s self, f: F) -> R
+				where F: for<'owner: 's> FnOnce(&'s $rental_ty) -> R, R: 's
+			{
+				f(self.rental.as_ref().unwrap())
 			}
 
 
@@ -85,7 +90,7 @@ macro_rules! rental{
 		}
 
 
-		impl<'rent $(, $lt)* $(, $param)*> Drop for $rent<'rent $(, $lt)* $(, $param)*> {
+		impl<'rent $(, $param)*> Drop for $rent<'rent $(, $param)*> {
 			fn drop(&mut self) {
 				mem::drop(self.rental.take());
 				mem::drop(self.owner.take());
@@ -96,21 +101,19 @@ macro_rules! rental{
 		rental!{@ITEMS $($rest)*}
 	};
 	{
-		@ITEMS pub struct $rent:ident<$([$lt:tt]),*$(,)* $(($param:ident)),*> [$($clause:tt)*] (
+		@ITEMS pub struct $rent:ident<'owner $(, $param:tt)*> [$($clause:tt)*] (
 			$owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
-
-
 		$($rest:tt)*
 	} => {
-		pub struct $rent<'owner $(, $lt)*, $(, $param: 'owner)*> $($clause)* {
+		pub struct $rent<'owner $(, $param)*> $($clause)* {
 			owner: Option<$owner_ty>,
 			rental: Option<$rental_ty>,
 		}
 
 
-		impl<'rent $(, $lt)* $(, $param)*> $rent<'rent $(, $lt)* $(, $param)*> {
+		impl<'rent $(, $param)*> $rent<'rent $(, $param)*> {
 			#[allow(dead_code)]
 			fn static_assert_valid_owner_ty() {
 				$crate::static_assert_fixed_deref::<$owner_ty>();
@@ -119,7 +122,7 @@ macro_rules! rental{
 
 			#[allow(dead_code)]
 			pub fn new<F: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> $rental_ty>(owner: $owner_ty, f: F)
-				-> $rent<'static $(, $lt)* $(, $param)*>
+				-> $rent<'static $(, $param)*>
 			{
 				$rent{
 					rental: unsafe {
@@ -133,7 +136,7 @@ macro_rules! rental{
 
 			#[allow(dead_code)]
 			pub fn try_new<E, F: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(owner: $owner_ty, f: F)
-				-> Result<$rent<'static $(, $lt)* $(, $param)*>, ($owner_ty, E)>
+				-> Result<$rent<'static $(, $param)*>, ($owner_ty, E)>
 			{
 				Ok($rent{
 					rental: unsafe {
@@ -155,13 +158,21 @@ macro_rules! rental{
 
 
 			#[allow(dead_code)]
+			pub fn rent<'s, F, R>(&'s self, f: F) -> R
+				where F: for<'owner: 's> FnOnce(&'s $rental_ty) -> R, R: 's
+			{
+				f(self.rental.as_ref().unwrap())
+			}
+
+
+			#[allow(dead_code)]
 			pub fn into_owner(mut self) -> $owner_ty {
 				self.owner.take().unwrap()
 			}
 		}
 
 
-		impl<'rent $(, $lt)* $(, $param)*> Drop for $rent<'rent $(, $lt)* $(, $param)*> {
+		impl<'rent $(, $param)*> Drop for $rent<'rent $(, $param)*> {
 			fn drop(&mut self) {
 				mem::drop(self.rental.take());
 				mem::drop(self.owner.take());
@@ -175,19 +186,9 @@ macro_rules! rental{
 
 
 	{
-		@$mode:ident pub struct $rent:ident [$($clause:tt)*] ($($body:tt)*); $($rest:tt)*
+		@$mode:ident pub struct $rent:ident<'owner $(, $param:tt)*>($($body:tt)*); $($rest:tt)*
 	} => {
-		rental!{@$mode pub struct $rent<> [$($clause)*] ($($body)*); $($rest)*}
-	};
-	{
-		@$mode:ident pub struct $rent:ident<$([$lt:tt]),*$(,)* $(($param:ident)),*>($($body:tt)*); $($rest:tt)*
-	} => {
-		rental!{@$mode pub struct $rent<$([$lt],)* $(($param)),*> [] ($($body)*); $($rest)*}
-	};
-	{
-		@$mode:ident pub struct $rent:ident ($($body:tt)*); $($rest:tt)*
-	} => {
-		rental!{@$mode pub struct $rent<> [] ($($body)*); $($rest)*}
+		rental!{@$mode pub struct $rent<'owner $(, $param)*> [] ($($body)*); $($rest)*}
 	};
 }
 
@@ -226,7 +227,13 @@ mod test {
 	}
 
 	impl<T> Foo<T> {
+		pub fn borrow(&self) -> FooBorrow<T> { FooBorrow{val: &self.val, tag: 5} }
 		pub fn borrow_mut(&mut self) -> FooBorrowMut<T> { FooBorrowMut{val: &mut self.val, tag: 12} }
+	}
+
+	pub struct FooBorrow<'f, T: 'f> {
+		val: &'f T,
+		tag: i32,
 	}
 
 	pub struct FooBorrowMut<'f, T: 'f> {
@@ -237,9 +244,8 @@ mod test {
 
 	rental!{
 		mod rental {
-			//pub struct RentRef<T> [where T: 'static] (Box<::std::cell::RefCell<T>>, Box<::std::cell::Ref<'owner, T>>);
-			//pub struct RentRefMut<T> [where T: 'static] (mut Box<::std::cell::RefCell<T>>, Box<::std::cell::RefMut<'owner, T>>);
-			pub struct FooMut<(T)>(mut Box<super::Foo<T>>, super::FooBorrowMut<'owner, T>);
+			pub struct Foo<'owner, T> [where T: 'owner] (Box<super::Foo<T>>, super::FooBorrow<'owner, T>);
+			pub struct FooMut<'owner, T> [where T: 'owner] (mut Box<super::Foo<T>>, super::FooBorrowMut<'owner, T>);
 		}
 	}
 
