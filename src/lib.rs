@@ -6,12 +6,13 @@ macro_rules! rental{
 		}
 	} => {
 		mod $rent_mod {
+			#![allow(unused_imports)]
 			use ::std::ops::{Deref, DerefMut};
 			use ::std::ops::Drop;
 			use ::std::result::Result;
 			use ::std::mem;
 
-			use $crate::{FixedDeref, Rental, RentalDeref};
+			use $crate::{FixedDeref, Rental, RentalMut, RentalDeref, RentalDerefMut, RentalDerefEq};
 
 			rental!{@ITEMS $($items)*}
 		}
@@ -25,16 +26,17 @@ macro_rules! rental{
 		);
 		$($rest:tt)*
 	} => {
-		pub struct $rent<'owner $(, $param)*> where 'owner: 'owner, $($clause)* {
+		pub struct $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref + DerefMut, $($clause)*
+		{
 			owner: Option<$owner_ty>,
 			rental: Option<$rental_ty>,
 		}
 
 
-		impl<'owner $(, $param)*> $rent<'owner $(, $param)*> where 'owner: 'owner, $($clause)* { }
-
-
-		impl<'rent $(, $param)*> $rent<'rent $(, $param)*> {
+		impl<'rent $(, $param)*> $rent<'rent $(, $param)*> where
+			$owner_ty: FixedDeref + DerefMut
+		{
 			#[allow(dead_code)]
 			fn static_assert_valid_owner_ty() {
 				$crate::static_assert_fixed_deref_mut::<$owner_ty>();
@@ -47,8 +49,7 @@ macro_rules! rental{
 			{
 				$rent{
 					rental: unsafe {
-						let ptr: *mut _ = &mut *owner;
-						Some(mem::transmute(f(&mut *ptr)))
+						Some(mem::transmute(f(&mut *<$owner_ty as DerefMut>::deref_mut(&mut owner))))
 					},
 					owner: Some(owner),
 				}
@@ -61,7 +62,7 @@ macro_rules! rental{
 			{
 				Ok($rent{
 					rental: unsafe {
-						let ptr: *mut _ = &mut *owner;
+						let ptr: *mut _ = &mut *<$owner_ty as DerefMut>::deref_mut(&mut owner);
 						match f(&mut *ptr) {
 							Ok(asset) => Some(mem::transmute(asset)),
 							Err(err) => return Err((owner, err)),
@@ -95,26 +96,50 @@ macro_rules! rental{
 		}
 
 
-		unsafe impl<'owner $(, $param)*> Rental<'owner> for $rent<'owner $(, $param)*> {
+		unsafe impl<'owner $(, $param)*> Rental<'owner> for $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref + DerefMut,
+			$($clause)*
+		{
 			type Owner = $owner_ty;
 			type Rental = $rental_ty;
 
+			#[inline(always)]
 			unsafe fn rental(&self) -> &<Self as Rental<'owner>>::Rental { self.rental.as_ref().unwrap() }
 		}
 
 
-		impl<'owner $(, $param)*> Deref for $rent<'owner $(, $param)*> where
-			$rent<'owner $(, $param)*>: RentalDeref<'owner> + 'owner,
-			<$rent<'owner $(, $param)*> as RentalDeref<'owner>>::Target: 'owner,
+		unsafe impl<'owner $(, $param)*> RentalMut<'owner> for $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref + DerefMut,
 			$($clause)*
+		{
+			#[inline(always)]
+			unsafe fn rental_mut(&mut self) -> &mut <Self as Rental<'owner>>::Rental { self.rental.as_mut().unwrap() }
+		}
+
+
+		impl<'owner $(, $param)*> Deref for $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref + DerefMut,
+			$rent<'owner $(, $param)*>: RentalDeref<'owner> + for<'rent> RentalDerefEq<'rent, $rent<'rent $(, $param)*>>,
 		{
 			type Target = <$rent<'owner $(, $param)*> as RentalDeref<'owner>>::Target;
 
+			#[inline(always)]
 			fn deref(&self) -> &<$rent<'owner $(, $param)*> as RentalDeref<'owner>>::Target { unsafe { self.rental_target() } }
 		}
 
 
-		impl<'rent $(, $param)*> Drop for $rent<'rent $(, $param)*> {
+		impl<'owner $(, $param)*> DerefMut for $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref + DerefMut,
+			$rent<'owner $(, $param)*>: RentalDerefMut<'owner> + for<'rent> RentalDerefEq<'rent, $rent<'rent $(, $param)*>>,
+		{
+			#[inline(always)]
+			fn deref_mut(&mut self) -> &mut <$rent<'owner $(, $param)*> as Deref>::Target { unsafe { self.rental_target_mut() } }
+		}
+
+
+		impl<'rent $(, $param)*> Drop for $rent<'rent $(, $param)*> where
+			$owner_ty: FixedDeref + DerefMut,
+		{
 			fn drop(&mut self) {
 				mem::drop(self.rental.take());
 				mem::drop(self.owner.take());
@@ -131,16 +156,17 @@ macro_rules! rental{
 		);
 		$($rest:tt)*
 	} => {
-		pub struct $rent<'owner $(, $param)*> where 'owner: 'owner, $($clause)* {
+		pub struct $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref, $($clause)*
+		{
 			owner: Option<$owner_ty>,
 			rental: Option<$rental_ty>,
 		}
 
 
-		impl<'owner $(, $param)*> $rent<'owner $(, $param)*> where 'owner: 'owner, $($clause)* { }
-
-
-		impl<'rent $(, $param)*> $rent<'rent $(, $param)*> {
+		impl<'rent $(, $param)*> $rent<'rent $(, $param)*> where
+			$owner_ty: FixedDeref
+		{
 			#[allow(dead_code)]
 			fn static_assert_valid_owner_ty() {
 				$crate::static_assert_fixed_deref::<$owner_ty>();
@@ -153,8 +179,7 @@ macro_rules! rental{
 			{
 				$rent{
 					rental: unsafe {
-						let ptr: *const _ = &*owner;
-						Some(mem::transmute(f(&*ptr)))
+						Some(mem::transmute(f(&*<$owner_ty as Deref>::deref(&owner))))
 					},
 					owner: Some(owner),
 				}
@@ -167,7 +192,7 @@ macro_rules! rental{
 			{
 				Ok($rent{
 					rental: unsafe {
-						let ptr: *const _ = &*owner;
+						let ptr: *const _ = &*<$owner_ty as Deref>::deref(&owner);
 						match f(&*ptr) {
 							Ok(asset) => Some(mem::transmute(asset)),
 							Err(err) => return Err((owner, err)),
@@ -199,15 +224,32 @@ macro_rules! rental{
 		}
 
 
-		unsafe impl<'owner $(, $param)*> Rental<'owner> for $rent<'owner $(, $param)*> {
+		unsafe impl<'owner $(, $param)*> Rental<'owner> for $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref,
+			$($clause)*
+		{
 			type Owner = $owner_ty;
 			type Rental = $rental_ty;
 
+			#[inline(always)]
 			unsafe fn rental(&self) -> &<Self as Rental<'owner>>::Rental { self.rental.as_ref().unwrap() }
 		}
 
 
-		impl<'rent $(, $param)*> Drop for $rent<'rent $(, $param)*> {
+		impl<'owner $(, $param)*> Deref for $rent<'owner $(, $param)*> where
+			$owner_ty: FixedDeref,
+			$rent<'owner $(, $param)*>: RentalDeref<'owner> + for<'rent> RentalDerefEq<'rent, $rent<'rent $(, $param)*>>,
+		{
+			type Target = <$rent<'owner $(, $param)*> as RentalDeref<'owner>>::Target;
+
+			#[inline(always)]
+			fn deref(&self) -> &<$rent<'owner $(, $param)*> as RentalDeref<'owner>>::Target { unsafe { self.rental_target() } }
+		}
+
+
+		impl<'rent $(, $param)*> Drop for $rent<'rent $(, $param)*> where
+			$owner_ty: FixedDeref
+		{
 			fn drop(&mut self) {
 				mem::drop(self.rental.take());
 				mem::drop(self.owner.take());
@@ -229,6 +271,7 @@ macro_rules! rental{
 
 
 use std::ops::{Deref, DerefMut};
+use std::{cell, rc, sync};
 
 
 #[allow(dead_code)]
@@ -248,14 +291,14 @@ unsafe impl<T: ?Sized> FixedDeref for Box<T> { }
 unsafe impl<T> FixedDeref for Vec<T> { }
 unsafe impl FixedDeref for String { }
 
-unsafe impl<T: ?Sized> FixedDeref for ::std::rc::Rc<T> { }
-unsafe impl<T: ?Sized> FixedDeref for ::std::sync::Arc<T> { }
+unsafe impl<T: ?Sized> FixedDeref for rc::Rc<T> { }
+unsafe impl<T: ?Sized> FixedDeref for sync::Arc<T> { }
 
-unsafe impl<'t, T: ?Sized> FixedDeref for ::std::cell::Ref<'t, T> { }
-unsafe impl<'t, T: ?Sized> FixedDeref for ::std::cell::RefMut<'t, T> { }
-unsafe impl<'t, T: ?Sized> FixedDeref for ::std::sync::MutexGuard<'t, T> { }
-unsafe impl<'t, T: ?Sized> FixedDeref for ::std::sync::RwLockReadGuard<'t, T> { }
-unsafe impl<'t, T: ?Sized> FixedDeref for ::std::sync::RwLockWriteGuard<'t, T> { }
+unsafe impl<'t, T: ?Sized> FixedDeref for cell::Ref<'t, T> { }
+unsafe impl<'t, T: ?Sized> FixedDeref for cell::RefMut<'t, T> { }
+unsafe impl<'t, T: ?Sized> FixedDeref for sync::MutexGuard<'t, T> { }
+unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockReadGuard<'t, T> { }
+unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockWriteGuard<'t, T> { }
 
 
 pub unsafe trait Rental<'rent> {
@@ -266,6 +309,12 @@ pub unsafe trait Rental<'rent> {
 }
 
 
+pub unsafe trait RentalMut<'rent>: Rental<'rent> {
+	unsafe fn rental_mut(&mut self) -> &mut <Self as Rental<'rent>>::Rental;
+}
+
+
+#[doc(hidden)]
 pub unsafe trait RentalDeref<'rent> {
 	type Target: ?Sized;
 
@@ -273,6 +322,13 @@ pub unsafe trait RentalDeref<'rent> {
 }
 
 
+#[doc(hidden)]
+pub unsafe trait RentalDerefMut<'rent>: RentalDeref<'rent> {
+	unsafe fn rental_target_mut<'s>(&'s mut self) -> &mut <Self as RentalDeref<'rent>>::Target where 'rent: 's;
+}
+
+
+#[doc(hidden)]
 pub unsafe trait RentalDerefEq<'rent, U: RentalDeref<'rent>> { }
 
 
@@ -281,26 +337,45 @@ unsafe impl<'rent, T> RentalDeref<'rent> for T where
 {
 	type Target = <<T as Rental<'rent>>::Rental as Deref>::Target;
 
-	unsafe fn rental_target<'s>(&'s self) -> &<<T as Rental<'rent>>::Rental as Deref>::Target where 'rent: 's { &**self.rental() }
+	#[inline(always)]
+	unsafe fn rental_target<'s>(&'s self) -> &<T as RentalDeref<'rent>>::Target where 'rent: 's { &**self.rental() }
+}
+
+
+unsafe impl<'rent, T> RentalDerefMut<'rent> for T where
+	T: RentalMut<'rent> + RentalDeref<'rent, Target=<<T as Rental<'rent>>::Rental as Deref>::Target>,
+	<T as Rental<'rent>>::Rental: DerefMut,
+{
+	#[inline(always)]
+	unsafe fn rental_target_mut<'s>(&'s mut self) -> &mut <T as RentalDeref<'rent>>::Target where 'rent: 's { &mut **self.rental_mut() }
 }
 
 
 unsafe impl<'t, 'u, T, U> RentalDerefEq<'u, U> for T where
 	T: RentalDeref<'t>,
+	U: RentalDeref<'u>,
 	U: RentalDeref<'u, Target=<T as RentalDeref<'t>>::Target>,
 { }
 
 
+rental! {
+	mod premade {
+		pub struct RentRef<'owner, T, B> where [T: FixedDeref + 'owner, B: 'owner] (T, &'owner B);
+		pub struct RentRefMut<'owner, T, B> where [T: FixedDeref + DerefMut + 'owner, B: 'owner] (mut T, &'owner mut B);
+	}
+}
+
+
+pub use premade::*;
+
+
 #[cfg(test)]
 mod test {
+	use std::ops::{Deref, DerefMut};
+
+
 	pub struct Foo<T> {
 		val: T,
-	}
-
-
-	impl<T> Foo<T> {
-		pub fn borrow(&self) -> FooBorrow<T> { FooBorrow{val: &self.val, tag: 5} }
-		pub fn borrow_mut(&mut self) -> FooBorrowMut<T> { FooBorrowMut{val: &mut self.val, tag: 12} }
 	}
 
 
@@ -316,6 +391,38 @@ mod test {
 	}
 
 
+	impl<T> Foo<T> {
+		pub fn borrow(&self) -> FooBorrow<T> { FooBorrow{val: &self.val, tag: 1} }
+		pub fn borrow_mut(&mut self) -> FooBorrowMut<T> { FooBorrowMut{val: &mut self.val, tag: 2} }
+	}
+
+
+	impl<'f, T> Deref for FooBorrow<'f, T> {
+		type Target = T;
+
+		fn deref(&self) -> &T { self.val }
+	}
+
+
+	impl<'f, T> Clone for FooBorrow<'f, T> {
+		fn clone(&self) -> FooBorrow<'f, T> {
+			FooBorrow{val: self.val, tag: self.tag}
+		}
+	}
+
+
+	impl<'f, T> Deref for FooBorrowMut<'f, T> {
+		type Target = T;
+
+		fn deref(&self) -> &T { self.val }
+	}
+
+
+	impl<'f, T> DerefMut for FooBorrowMut<'f, T> {
+		fn deref_mut(&mut self) -> &mut T { self.val }
+	}
+
+
 	rental!{
 		mod rental {
 			pub struct Foo<'owner, T> where [T: 'owner] (Box<super::Foo<T>>, super::FooBorrow<'owner, T>);
@@ -324,27 +431,61 @@ mod test {
 	}
 
 
-//	#[test]
-//	fn instantiate() {
-//		let _rent = rental::RentRef::new(Box::new(RefCell::new(5)), |r| Box::new(r.borrow()));
-//		let _rent_mut = rental::RentRefMut::new(Box::new(RefCell::new(12)), |r| Box::new(r.borrow_mut()));
-//	}
+	#[test]
+	fn instantiate() {
+		rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+	}
 
 
 	#[test]
-	fn unsound() {
-//		let mut _unsound = rental::Unsound::new(Box::new(Foo{val: 5}), |f| f.borrow());
-//		let b = _unsound.rent_mut(|f| &mut f.tag);
+	fn instantiate_mut() {
+		rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+	}
 
-//		let mut freed = {
-//			let (mut unsound, fake) = (rental::Unsound::new(Box::new(RefCell::new(5)), |r| r.borrow()), RefCell::new(12));
-//			{
-//				let r = unsound.rental_mut();
-//				*r = fake.borrow();
-//			}
-//			unsound
-//		};
-//
-//		println!("Freed: {}", **freed.rental_mut());
+
+	#[test]
+	fn rent() {
+		let foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		assert_eq!(foo.rent(|fb| **fb), 5);
+	}
+
+
+	#[test]
+	fn rent_mut() {
+		let mut foo = rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+		foo.rent_mut(|fbm| (*fbm.val) = 12);
+		assert_eq!(foo.rent(|fbm| **fbm), 12);
+	}
+
+
+	#[test]
+	fn rent_borrow() {
+		let foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		let ft = foo.rent(|fb| &fb.tag);
+		assert_eq!(*ft, 1);
+	}
+
+
+	#[test]
+	fn rent_borrow_mut() {
+		let mut foo = rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+		let ft = foo.rent_mut(|fbm| &mut fbm.tag);
+		*ft = 3;
+		assert_eq!(*ft, 3);
+	}
+
+
+	#[test]
+	fn deref() {
+		let mut foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		assert_eq!(*foo, 5);
+	}
+
+
+	#[test]
+	fn deref_mut() {
+		let mut foo_mut = rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+		*foo_mut = 12;
+		assert_eq!(*foo_mut, 12);
 	}
 }
