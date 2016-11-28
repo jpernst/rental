@@ -103,6 +103,7 @@ macro_rules! rental{
 			type Owner = $owner_ty;
 			type Rental = $rental_ty;
 
+
 			#[inline(always)]
 			unsafe fn rental(&self) -> &<Self as Rental<'owner>>::Rental { self.rental.as_ref().unwrap() }
 		}
@@ -231,6 +232,7 @@ macro_rules! rental{
 			type Owner = $owner_ty;
 			type Rental = $rental_ty;
 
+
 			#[inline(always)]
 			unsafe fn rental(&self) -> &<Self as Rental<'owner>>::Rental { self.rental.as_ref().unwrap() }
 		}
@@ -302,7 +304,7 @@ unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockWriteGuard<'t, T> { }
 
 
 pub unsafe trait Rental<'rent> {
-	type Owner: FixedDeref;
+	type Owner: FixedDeref + 'rent;
 	type Rental: 'rent;
 
 	unsafe fn rental(&self) -> &<Self as Rental<'rent>>::Rental;
@@ -353,7 +355,6 @@ unsafe impl<'rent, T> RentalDerefMut<'rent> for T where
 
 unsafe impl<'t, 'u, T, U> RentalDerefEq<'u, U> for T where
 	T: RentalDeref<'t>,
-	U: RentalDeref<'u>,
 	U: RentalDeref<'u, Target=<T as RentalDeref<'t>>::Target>,
 { }
 
@@ -477,7 +478,7 @@ mod test {
 
 	#[test]
 	fn deref() {
-		let mut foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		let foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
 		assert_eq!(*foo, 5);
 	}
 
