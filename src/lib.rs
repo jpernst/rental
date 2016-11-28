@@ -38,14 +38,8 @@ macro_rules! rental{
 			$owner_ty: FixedDeref + DerefMut
 		{
 			#[allow(dead_code)]
-			fn static_assert_valid_owner_ty() {
-				$crate::static_assert_fixed_deref_mut::<$owner_ty>();
-			}
-
-
-			#[allow(dead_code)]
 			pub fn new<F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> $rental_ty>(mut owner: $owner_ty, f: F)
-				-> $rent<'static $(, $param)*>
+				-> $rent<'rent $(, $param)*>
 			{
 				$rent{
 					rental: unsafe {
@@ -58,7 +52,7 @@ macro_rules! rental{
 
 			#[allow(dead_code)]
 			pub fn try_new<E, F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(mut owner: $owner_ty, f: F)
-				-> Result<$rent<'static $(, $param)*>, ($owner_ty, E)>
+				-> Result<$rent<'rent $(, $param)*>, ($owner_ty, E)>
 			{
 				Ok($rent{
 					rental: unsafe {
@@ -87,12 +81,6 @@ macro_rules! rental{
 			{
 				f(self.rental.as_mut().unwrap())
 			}
-
-
-			#[allow(dead_code)]
-			pub fn into_owner(mut self) -> $owner_ty {
-				self.owner.take().unwrap()
-			}
 		}
 
 
@@ -105,7 +93,10 @@ macro_rules! rental{
 
 
 			#[inline(always)]
-			unsafe fn rental(&self) -> &<Self as Rental<'owner>>::Rental { self.rental.as_ref().unwrap() }
+			unsafe fn rental(&self) -> &$rental_ty { self.rental.as_ref().unwrap() }
+			unsafe fn from_parts(owner: $owner_ty, rent: $rental_ty) -> Self { $rent{owner: Some(owner), rental: Some(rent)} }
+			unsafe fn into_parts(mut self) -> ($owner_ty, $rental_ty) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
+			fn into_owner(mut self) -> $owner_ty { self.owner.take().unwrap() }
 		}
 
 
@@ -169,14 +160,8 @@ macro_rules! rental{
 			$owner_ty: FixedDeref
 		{
 			#[allow(dead_code)]
-			fn static_assert_valid_owner_ty() {
-				$crate::static_assert_fixed_deref::<$owner_ty>();
-			}
-
-
-			#[allow(dead_code)]
 			pub fn new<F: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> $rental_ty>(owner: $owner_ty, f: F)
-				-> $rent<'static $(, $param)*>
+				-> $rent<'rent $(, $param)*>
 			{
 				$rent{
 					rental: unsafe {
@@ -189,7 +174,7 @@ macro_rules! rental{
 
 			#[allow(dead_code)]
 			pub fn try_new<E, F: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(owner: $owner_ty, f: F)
-				-> Result<$rent<'static $(, $param)*>, ($owner_ty, E)>
+				-> Result<$rent<'rent $(, $param)*>, ($owner_ty, E)>
 			{
 				Ok($rent{
 					rental: unsafe {
@@ -216,12 +201,6 @@ macro_rules! rental{
 			{
 				f(self.rental.as_ref().unwrap())
 			}
-
-
-			#[allow(dead_code)]
-			pub fn into_owner(mut self) -> $owner_ty {
-				self.owner.take().unwrap()
-			}
 		}
 
 
@@ -234,7 +213,10 @@ macro_rules! rental{
 
 
 			#[inline(always)]
-			unsafe fn rental(&self) -> &<Self as Rental<'owner>>::Rental { self.rental.as_ref().unwrap() }
+			unsafe fn rental(&self) -> &$rental_ty { self.rental.as_ref().unwrap() }
+			unsafe fn from_parts(owner: $owner_ty, rent: $rental_ty) -> Self { $rent{owner: Some(owner), rental: Some(rent)} }
+			unsafe fn into_parts(mut self) -> ($owner_ty, $rental_ty) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
+			fn into_owner(mut self) -> $owner_ty { self.owner.take().unwrap() }
 		}
 
 
@@ -308,6 +290,9 @@ pub unsafe trait Rental<'rent> {
 	type Rental: 'rent;
 
 	unsafe fn rental(&self) -> &<Self as Rental<'rent>>::Rental;
+	unsafe fn from_parts(<Self as Rental<'rent>>::Owner, <Self as Rental<'rent>>::Rental) -> Self;
+	unsafe fn into_parts(self) -> (<Self as Rental<'rent>>::Owner, <Self as Rental<'rent>>::Rental);
+	fn into_owner(self) -> <Self as Rental<'rent>>::Owner;
 }
 
 
@@ -433,13 +418,13 @@ mod test {
 
 
 	#[test]
-	fn instantiate() {
+	fn new() {
 		rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
 	}
 
 
 	#[test]
-	fn instantiate_mut() {
+	fn new_mut() {
 		rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
 	}
 
