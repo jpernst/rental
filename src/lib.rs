@@ -258,14 +258,6 @@ use std::ops::{Deref, DerefMut};
 use std::{cell, rc, sync};
 
 
-#[allow(dead_code)]
-#[inline(always)]
-fn static_assert_fixed_deref<O: FixedDeref>() { }
-#[allow(dead_code)]
-#[inline(always)]
-fn static_assert_fixed_deref_mut<O: FixedDeref + DerefMut>() { }
-
-
 pub unsafe trait FixedDeref: Deref { }
 
 unsafe impl<'t, T: ?Sized> FixedDeref for &'t T { }
@@ -298,6 +290,12 @@ pub unsafe trait Rental<'rent> {
 
 pub unsafe trait RentalMut<'rent>: Rental<'rent> {
 	unsafe fn rental_mut(&mut self) -> &mut <Self as Rental<'rent>>::Rental;
+}
+
+
+pub unsafe trait RentalMap<'rent> {
+	type From: 'rent,
+	type Into: 'rent,
 }
 
 
