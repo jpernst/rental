@@ -20,7 +20,7 @@ macro_rules! rental{
 
 
 	{
-		@ITEMS pub struct $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+		@ITEMS pub rental $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
 			mut $owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
@@ -141,8 +141,10 @@ macro_rules! rental{
 
 		rental!{@ITEMS $($rest)*}
 	};
+
+
 	{
-		@ITEMS pub struct $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+		@ITEMS pub rental $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
 			$owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
@@ -243,14 +245,55 @@ macro_rules! rental{
 
 		rental!{@ITEMS $($rest)*}
 	};
-	{ @ITEMS } => { };
 
 
 	{
-		@$mode:ident pub struct $rent:ident<'owner $(, $param:tt)*>($($body:tt)*); $($rest:tt)*
+		@ITEMS pub mapper $mapper:ident<'owner $(, $param:tt)*>($($from_ty:tt)*) -> ($($into_ty:tt)*) where [$($clause:tt)*];
+		$($rest:tt)*
 	} => {
-		rental!{@$mode pub struct $rent<'owner $(, $param)*> where [] ($($body)*); $($rest)*}
+		pub fn $mapper<'owner $(, $param)*, T__, U__, F__>(_t: T__, _f: F__) -> U__ where
+			T__: Rental<'owner, Rental=rental!(@AS_TY $($from_ty)*)>,
+			U__: Rental<'owner, Owner=<T__ as Rental<'owner>>::Owner, Rental=rental!(@AS_TY $($into_ty)*)>,
+			F__: for<'rent> FnOnce(rental!(@AS_TY rental!(@REBIND 'rent [] $($from_ty)*))) -> rental!(@AS_TY rental!(@REBIND 'rent [] $($into_ty)*)),
+			$($clause)*
+		{
+			panic!();
+		}
+
+
+		rental!{@ITEMS $($rest)*}
 	};
+
+
+	{
+		@ITEMS pub rental $rent:ident<'owner $(, $param:tt)*>($($body:tt)*); $($rest:tt)*
+	} => {
+		rental!{@ITEMS pub rental $rent<'owner $(, $param)*> where [] ($($body)*); $($rest)*}
+	};
+	{
+		@ITEMS pub mapper $mapper:ident<'owner $(, $param:tt)*> ($($from_ty:tt)*) -> ($($into_ty:tt)*); $($rest:tt)*
+	} => {
+		rental!{@ITEMS pub mapper $mapper<'owner $(, $param)*> ($($from_ty)*) -> ($($into_ty)*) where []; $($rest)*}
+	};
+	{ @ITEMS } => { };
+
+
+	(
+		@REBIND $into:tt [$($pre:tt)*] 'owner $($post:tt)*
+	) => {
+		rental!(@REBIND $into [$($pre)* $into] $($post)*)
+	};
+	(
+		@REBIND $into:tt [$($pre:tt)*] $tok:tt $($post:tt)*
+	) => {
+		rental!(@REBIND $into [$($pre)* $tok] $($post)*)
+	};
+	(
+		@REBIND $into:tt [$($rebound:tt)*]
+	) => {
+		$($rebound)*
+	};
+	( @AS_TY $t:ty ) => { $t };
 }
 
 
@@ -293,9 +336,9 @@ pub unsafe trait RentalMut<'rent>: Rental<'rent> {
 }
 
 
-pub unsafe trait RentalMap<'rent> {
-	type From: 'rent,
-	type Into: 'rent,
+pub unsafe trait RentalMapper<'rent> {
+	type From: 'rent;
+	type Into: 'rent;
 }
 
 
@@ -344,8 +387,9 @@ unsafe impl<'t, 'u, T, U> RentalDerefEq<'u, U> for T where
 
 rental! {
 	mod premade {
-		pub struct RentRef<'owner, T, B> where [T: FixedDeref + 'owner, B: 'owner] (T, &'owner B);
-		pub struct RentRefMut<'owner, T, B> where [T: FixedDeref + DerefMut + 'owner, B: 'owner] (mut T, &'owner mut B);
+		pub rental RentRef<'owner, T, B> where [T: FixedDeref + 'owner, B: 'owner] (T, &'owner B);
+		pub rental RentRefMut<'owner, T, B> where [T: FixedDeref + DerefMut + 'owner, B: 'owner] (mut T, &'owner mut B);
+		pub mapper map_ref<'owner, T, U>(&'owner T) -> (&'owner U) where [T: 'owner, U: 'owner];
 	}
 }
 
@@ -408,35 +452,35 @@ mod test {
 
 
 	rental!{
-		mod rental {
-			pub struct Foo<'owner, T> where [T: 'owner] (Box<super::Foo<T>>, super::FooBorrow<'owner, T>);
-			pub struct FooMut<'owner, T> where [T: 'owner] (mut Box<super::Foo<T>>, super::FooBorrowMut<'owner, T>);
+		mod test {
+			pub rental Foo<'owner, T> where [T: 'owner] (Box<super::Foo<T>>, super::FooBorrow<'owner, T>);
+			pub rental FooMut<'owner, T> where [T: 'owner] (mut Box<super::Foo<T>>, super::FooBorrowMut<'owner, T>);
 		}
 	}
 
 
 	#[test]
 	fn new() {
-		rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		test::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
 	}
 
 
 	#[test]
 	fn new_mut() {
-		rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+		test::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
 	}
 
 
 	#[test]
 	fn rent() {
-		let foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		let foo = test::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
 		assert_eq!(foo.rent(|fb| **fb), 5);
 	}
 
 
 	#[test]
 	fn rent_mut() {
-		let mut foo = rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+		let mut foo = test::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
 		foo.rent_mut(|fbm| (*fbm.val) = 12);
 		assert_eq!(foo.rent(|fbm| **fbm), 12);
 	}
@@ -444,7 +488,7 @@ mod test {
 
 	#[test]
 	fn rent_borrow() {
-		let foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		let foo = test::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
 		let ft = foo.rent(|fb| &fb.tag);
 		assert_eq!(*ft, 1);
 	}
@@ -452,7 +496,7 @@ mod test {
 
 	#[test]
 	fn rent_borrow_mut() {
-		let mut foo = rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+		let mut foo = test::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
 		let ft = foo.rent_mut(|fbm| &mut fbm.tag);
 		*ft = 3;
 		assert_eq!(*ft, 3);
@@ -461,14 +505,14 @@ mod test {
 
 	#[test]
 	fn deref() {
-		let foo = rental::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		let foo = test::Foo::new(Box::new(Foo{val: 5}), |f| f.borrow());
 		assert_eq!(*foo, 5);
 	}
 
 
 	#[test]
 	fn deref_mut() {
-		let mut foo_mut = rental::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+		let mut foo_mut = test::FooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
 		*foo_mut = 12;
 		assert_eq!(*foo_mut, 12);
 	}
