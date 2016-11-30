@@ -14,13 +14,13 @@ macro_rules! rental{
 
 			use $crate::{FixedDeref, Rental, RentalMut, RentalDeref, RentalDerefMut, RentalDerefEq};
 
-			rental!{@ITEMS $($items)*}
+			rental!{@ITEM $($items)*}
 		}
 	};
 
 
 	{
-		@ITEMS pub rental $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+		@ITEM pub rental $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
 			mut $owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
@@ -38,7 +38,7 @@ macro_rules! rental{
 			$owner_ty: FixedDeref + DerefMut
 		{
 			#[allow(dead_code)]
-			pub fn new<F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> $rental_ty>(mut owner: $owner_ty, f: F)
+			pub fn new<F__: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> $rental_ty>(mut owner: $owner_ty, f: F__)
 				-> $rent<'rent $(, $param)*>
 			{
 				$rent{
@@ -51,15 +51,15 @@ macro_rules! rental{
 
 
 			#[allow(dead_code)]
-			pub fn try_new<E, F: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(mut owner: $owner_ty, f: F)
-				-> Result<$rent<'rent $(, $param)*>, ($owner_ty, E)>
+			pub fn try_new<E__, F__: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> Result<$rental_ty, E__>>(mut owner: $owner_ty, f: F__)
+				-> Result<$rent<'rent $(, $param)*>, (E__, $owner_ty)>
 			{
 				Ok($rent{
 					rental: unsafe {
 						let ptr: *mut _ = &mut *<$owner_ty as DerefMut>::deref_mut(&mut owner);
 						match f(&mut *ptr) {
 							Ok(asset) => Some(mem::transmute(asset)),
-							Err(err) => return Err((owner, err)),
+							Err(err) => return Err((err, owner)),
 						}
 					},
 					owner: Some(owner),
@@ -68,16 +68,16 @@ macro_rules! rental{
 
 
 			#[allow(dead_code)]
-			pub fn rent<'s, F, R>(&'s self, f: F) -> R where
-				F: for<'owner: 's> FnOnce(&'s $rental_ty) -> R, R: 's
+			pub fn rent<'s, F__, R__>(&'s self, f: F__) -> R__ where
+				F__: for<'owner: 's> FnOnce(&'s $rental_ty) -> R__, R__: 's
 			{
 				f(self.rental.as_ref().unwrap())
 			}
 
 
 			#[allow(dead_code)]
-			pub fn rent_mut<'s, F, R>(&'s mut self, f: F) -> R where
-				F: for<'owner: 's> FnOnce(&'s mut $rental_ty) -> R, R: 's
+			pub fn rent_mut<'s, F__, R__>(&'s mut self, f: F__) -> R__ where
+				F__: for<'owner: 's> FnOnce(&'s mut $rental_ty) -> R__, R__: 's
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -139,12 +139,12 @@ macro_rules! rental{
 		}
 
 
-		rental!{@ITEMS $($rest)*}
+		rental!{@ITEM $($rest)*}
 	};
 
 
 	{
-		@ITEMS pub rental $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+		@ITEM pub rental $rent:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
 			$owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
@@ -175,15 +175,15 @@ macro_rules! rental{
 
 
 			#[allow(dead_code)]
-			pub fn try_new<E, F: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> Result<$rental_ty, E>>(owner: $owner_ty, f: F)
-				-> Result<$rent<'rent $(, $param)*>, ($owner_ty, E)>
+			pub fn try_new<E__, F__: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> Result<$rental_ty, E__>>(owner: $owner_ty, f: F__)
+				-> Result<$rent<'rent $(, $param)*>, (E__, $owner_ty)>
 			{
 				Ok($rent{
 					rental: unsafe {
 						let ptr: *const _ = &*<$owner_ty as Deref>::deref(&owner);
 						match f(&*ptr) {
 							Ok(asset) => Some(mem::transmute(asset)),
-							Err(err) => return Err((owner, err)),
+							Err(err) => return Err((err, owner)),
 						}
 					},
 					owner: Some(owner),
@@ -198,8 +198,8 @@ macro_rules! rental{
 
 
 			#[allow(dead_code)]
-			pub fn rent<'s, F, R>(&'s self, f: F) -> R where
-				F: for<'owner: 's> FnOnce(&'s $rental_ty) -> R, R: 's
+			pub fn rent<'s, F__, R__>(&'s self, f: F__) -> R__ where
+				F__: for<'owner: 's> FnOnce(&'s $rental_ty) -> R__, R__: 's
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -243,57 +243,111 @@ macro_rules! rental{
 		}
 
 
-		rental!{@ITEMS $($rest)*}
+		rental!{@ITEM $($rest)*}
 	};
 
 
 	{
-		@ITEMS pub mapper $mapper:ident<'owner $(, $param:tt)*>($($from_ty:tt)*) -> ($($into_ty:tt)*) where [$($clause:tt)*];
+		@ITEM pub mapper $mapper:ident<'owner $(, $param:tt)*>($($from_ty:tt)*) -> ($($into_ty:tt)*) where [$($clause:tt)*];
 		$($rest:tt)*
 	} => {
-		pub fn $mapper<'owner $(, $param)*, T__, U__, F__>(_t: T__, _f: F__) -> U__ where
-			T__: Rental<'owner, Rental=rental!(@AS_TY $($from_ty)*)>,
-			U__: Rental<'owner, Owner=<T__ as Rental<'owner>>::Owner, Rental=rental!(@AS_TY $($into_ty)*)>,
-			F__: for<'rent> FnOnce(rental!(@AS_TY rental!(@REBIND 'rent [] $($from_ty)*))) -> rental!(@AS_TY rental!(@REBIND 'rent [] $($into_ty)*)),
-			$($clause)*
-		{
-			panic!();
+		#[allow(dead_code)]
+		struct $mapper;
+		impl $mapper {
+			#[allow(dead_code)]
+			pub fn map<'owner $(, $param)*, T__, U__, F__>(t: T__, f: F__) -> U__ where
+				T__: Rental<'owner, Rental=$($from_ty)*>,
+				U__: Rental<'owner, Owner=<T__ as Rental<'owner>>::Owner, Rental=$($into_ty)*>,
+				F__: for<'rent: 'owner> FnOnce(rental!(@REBIND 'rent {} $($from_ty)*)) -> rental!(@REBIND 'rent {} $($into_ty)*),
+				$($clause)*
+			{
+				unsafe { 
+					let (o, r) = t.into_parts();
+					U__::from_parts(o, f(r))
+				}
+			}
+
+
+			#[allow(dead_code)]
+			pub fn try_map<'owner $(, $param)*, T__, U__, E__, F__>(t: T__, f: F__) -> Result<U__, (E__, T__)> where
+				T__: Rental<'owner, Rental=$($from_ty)*>,
+				U__: Rental<'owner, Owner=<T__ as Rental<'owner>>::Owner, Rental=$($into_ty)*>,
+				F__: for<'rent: 'owner> FnOnce(rental!(@REBIND 'rent {} $($from_ty)*)) -> Result<rental!(@REBIND 'rent {} $($into_ty)*), (E__, rental!(@REBIND 'rent {} $($from_ty)*))>,
+				$($clause)*
+			{
+				unsafe { 
+					let (o, r) = t.into_parts();
+					match f(r) {
+						Ok(r) => Ok(U__::from_parts(o, r)),
+						Err((e, r)) => Err((e, T__::from_parts(o, r))),
+					}
+				}
+			}
 		}
 
 
-		rental!{@ITEMS $($rest)*}
+		rental!{@ITEM $($rest)*}
 	};
 
 
 	{
-		@ITEMS pub rental $rent:ident<'owner $(, $param:tt)*>($($body:tt)*); $($rest:tt)*
+		@ITEM pub rental $rent:ident<'owner $(, $param:tt)*>($($body:tt)*); $($rest:tt)*
 	} => {
-		rental!{@ITEMS pub rental $rent<'owner $(, $param)*> where [] ($($body)*); $($rest)*}
+		rental!{@ITEM pub rental $rent<'owner $(, $param)*> where [] ($($body)*); $($rest)*}
 	};
 	{
-		@ITEMS pub mapper $mapper:ident<'owner $(, $param:tt)*> ($($from_ty:tt)*) -> ($($into_ty:tt)*); $($rest:tt)*
+		@ITEM pub mapper $mapper:ident<'owner $(, $param:tt)*> ($($from_ty:tt)*) -> ($($into_ty:tt)*); $($rest:tt)*
 	} => {
-		rental!{@ITEMS pub mapper $mapper<'owner $(, $param)*> ($($from_ty)*) -> ($($into_ty)*) where []; $($rest)*}
+		rental!{@ITEM pub mapper $mapper<'owner $(, $param)*> ($($from_ty)*) -> ($($into_ty)*) where []; $($rest)*}
 	};
-	{ @ITEMS } => { };
+	{ @ITEM } => { };
 
 
 	(
-		@REBIND $into:tt [$($pre:tt)*] 'owner $($post:tt)*
+		@REBIND $into:tt {$($head:tt)*} 'owner $($tail:tt)*
 	) => {
-		rental!(@REBIND $into [$($pre)* $into] $($post)*)
+		rental!(@REBIND $into {$($head)* $into} $($tail)*)
 	};
 	(
-		@REBIND $into:tt [$($pre:tt)*] $tok:tt $($post:tt)*
+		@REBIND $into:tt {$($head:tt)*} ($($inner:tt)*) $($tail:tt)*
 	) => {
-		rental!(@REBIND $into [$($pre)* $tok] $($post)*)
+		rental!(@REBIND $into {($($head)*)} $($inner)* @> $($tail)*)
 	};
 	(
-		@REBIND $into:tt [$($rebound:tt)*]
+		@REBIND $into:tt {$($head:tt)*} [$($inner:tt)*] $($tail:tt)*
+	) => {
+		rental!(@REBIND $into {[$($head)*]} $($inner)* @> $($tail)*)
+	};
+	(
+		@REBIND $into:tt {$($head:tt)*} {$($inner:tt)*} $($tail:tt)*
+	) => {
+		rental!(@REBIND $into {{$($head)*}} $($inner)* @> $($tail)*)
+	};
+	(
+		@REBIND $into:tt {($($head:tt)*) $($inner:tt)*} @> $($tail:tt)*
+	) => {
+		rental!(@REBIND $into {$($head)*($($inner)*)} $($tail)*)
+	};
+	(
+		@REBIND $into:tt {[$($head:tt)*] $($inner:tt)*} @> $($tail:tt)*
+	) => {
+		rental!(@REBIND $into {$($head)*[$($inner)*]} $($tail)*)
+	};
+	(
+		@REBIND $into:tt {{$($head:tt)*} $($inner:tt)*} @> $($tail:tt)*
+	) => {
+		rental!(@REBIND $into {$($head)*{$($inner)*}} $($tail)*)
+	};
+	(
+		@REBIND $into:tt {$($head:tt)*} $tok:tt $($tail:tt)*
+	) => {
+		rental!(@REBIND $into {$($head)* $tok} $($tail)*)
+	};
+	(
+		@REBIND $into:tt {$($rebound:tt)*}
 	) => {
 		$($rebound)*
 	};
-	( @AS_TY $t:ty ) => { $t };
 }
 
 
@@ -389,7 +443,7 @@ rental! {
 	mod premade {
 		pub rental RentRef<'owner, T, B> where [T: FixedDeref + 'owner, B: 'owner] (T, &'owner B);
 		pub rental RentRefMut<'owner, T, B> where [T: FixedDeref + DerefMut + 'owner, B: 'owner] (mut T, &'owner mut B);
-		pub mapper map_ref<'owner, T, U>(&'owner T) -> (&'owner U) where [T: 'owner, U: 'owner];
+		pub mapper MapRef<'owner, T, U>(&'owner T) -> (&'owner U) where [T: 'owner, U: 'owner];
 	}
 }
 
