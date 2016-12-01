@@ -52,13 +52,13 @@
 /// 
 /// ```rust,ignore
 /// // Shared
-/// pub rental $rental:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+/// pub rental $rental:ident<'rental $(, $param:tt)*> where [$($clause:tt)*] (
 ///     $owner_ty:ty,
 ///     $rental_ty:ty$(,)*
 /// );
 ///
 /// // Mutable
-/// pub rental $rental:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+/// pub rental $rental:ident<'rental $(, $param:tt)*> where [$($clause:tt)*] (
 ///     mut $owner_ty:ty,
 ///     $rental_ty:ty$(,)*
 /// );
@@ -67,10 +67,19 @@
 ///
 /// The key difference being the presence of absence of `mut` on the owner
 /// declaration. Note that the first generic parameter must be a lifetime
-/// called `'owner`. This lifetime has special implications and is very
-/// important. It links together the owner and the rented borrow,
+/// called `'rental`. This lifetime has special implications and is very
+/// important. It links together the owner and the rented borrow, and should be
+/// used in any lifetime position that the owner and borrow must share. For
+/// example, the definition of [`RentRef`](struct.RentRef.html) looks like this:
 ///
-/// 
+/// ```rust,ignore
+/// pub rental RentRef<'rental, T, B> where [T: FixedDeref + 'rental, B: 'rental] (T, &'rental B);
+/// ```
+///
+/// The lifetime `'rental` appears as the bound on the reference as well as all
+/// the generic types. This ties it to the owner and ensures the relationship
+/// is handled properly.
+///
 #[macro_export]
 macro_rules! rental {
 	{
@@ -110,14 +119,14 @@ macro_rules! rental {
 
 
 	{
-		@ITEM pub rental $rental:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+		@ITEM pub rental $rental:ident<'rental $(, $param:tt)*> where [$($clause:tt)*] (
 			mut $owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
 		$($rest:tt)*
 	} => {
 		/// A struct representing an (owner, rental) pair.
-		pub struct $rental<'owner $(, $param)*> where
+		pub struct $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref + DerefMut, $($clause)*
 		{
 			owner: Option<$owner_ty>,
@@ -125,13 +134,13 @@ macro_rules! rental {
 		}
 
 
-		impl<'rental $(, $param)*> $rental<'rental $(, $param)*> where
+		impl<'owner $(, $param)*> $rental<'owner $(, $param)*> where
 			$owner_ty: FixedDeref + DerefMut
 		{
 			#[allow(dead_code)]
 			pub fn new<F__>(mut owner: $owner_ty, f: F__)
-				-> $rental<'rental $(, $param)*> where
-				F__: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> $rental_ty
+				-> $rental<'owner $(, $param)*> where
+				F__: for<'rental> FnOnce(&'rental mut <$owner_ty as Deref>::Target) -> $rental_ty
 			{
 				$rental{
 					rental: unsafe {
@@ -144,8 +153,8 @@ macro_rules! rental {
 
 			#[allow(dead_code)]
 			pub fn try_new<E__, F__>(mut owner: $owner_ty, f: F__)
-				-> Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'owner> FnOnce(&'owner mut <$owner_ty as Deref>::Target) -> Result<$rental_ty, E__>
+				-> Result<$rental<'owner $(, $param)*>, (E__, $owner_ty)> where
+				F__: for<'rental> FnOnce(&'rental mut <$owner_ty as Deref>::Target) -> Result<$rental_ty, E__>
 			{
 				Ok($rental{
 					rental: unsafe {
@@ -162,7 +171,7 @@ macro_rules! rental {
 
 			#[allow(dead_code)]
 			pub fn rent<'s, F__, R__>(&'s self, f: F__) -> R__ where
-				F__: for<'owner: 's> FnOnce(&'s $rental_ty) -> R__, R__: 's
+				F__: for<'rental: 's> FnOnce(&'s $rental_ty) -> R__, R__: 's
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -170,14 +179,14 @@ macro_rules! rental {
 
 			#[allow(dead_code)]
 			pub fn rent_mut<'s, F__, R__>(&'s mut self, f: F__) -> R__ where
-				F__: for<'owner: 's> FnOnce(&'s mut $rental_ty) -> R__, R__: 's
+				F__: for<'rental: 's> FnOnce(&'s mut $rental_ty) -> R__, R__: 's
 			{
 				f(self.rental.as_mut().unwrap())
 			}
 		}
 
 
-		unsafe impl<'owner $(, $param)*> Rental<'owner> for $rental<'owner $(, $param)*> where
+		unsafe impl<'rental $(, $param)*> Rental<'rental> for $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref + DerefMut,
 			$($clause)*
 		{
@@ -193,36 +202,36 @@ macro_rules! rental {
 		}
 
 
-		unsafe impl<'owner $(, $param)*> RentalMut<'owner> for $rental<'owner $(, $param)*> where
+		unsafe impl<'rental $(, $param)*> RentalMut<'rental> for $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref + DerefMut,
 			$($clause)*
 		{
 			#[inline(always)]
-			unsafe fn rental_mut(&mut self) -> &mut <Self as Rental<'owner>>::Rental { self.rental.as_mut().unwrap() }
+			unsafe fn rental_mut(&mut self) -> &mut <Self as Rental<'rental>>::Rental { self.rental.as_mut().unwrap() }
 		}
 
 
-		impl<'owner $(, $param)*> Deref for $rental<'owner $(, $param)*> where
+		impl<'rental $(, $param)*> Deref for $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref + DerefMut,
-			$rental<'owner $(, $param)*>: RentalDeref<'owner> + for<'rental> RentalDerefEq<'rental, $rental<'rental $(, $param)*>>,
+			$rental<'rental $(, $param)*>: RentalDeref<'rental> + for<'owner> RentalDerefEq<'owner, $rental<'owner $(, $param)*>>,
 		{
-			type Target = <$rental<'owner $(, $param)*> as RentalDeref<'owner>>::Target;
+			type Target = <$rental<'rental $(, $param)*> as RentalDeref<'rental>>::Target;
 
 			#[inline(always)]
-			fn deref(&self) -> &<$rental<'owner $(, $param)*> as RentalDeref<'owner>>::Target { unsafe { self.rental_target() } }
+			fn deref(&self) -> &<$rental<'rental $(, $param)*> as RentalDeref<'rental>>::Target { unsafe { self.rental_target() } }
 		}
 
 
-		impl<'owner $(, $param)*> DerefMut for $rental<'owner $(, $param)*> where
+		impl<'rental $(, $param)*> DerefMut for $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref + DerefMut,
-			$rental<'owner $(, $param)*>: RentalDerefMut<'owner> + for<'rental> RentalDerefEq<'rental, $rental<'rental $(, $param)*>>,
+			$rental<'rental $(, $param)*>: RentalDerefMut<'rental> + for<'owner> RentalDerefEq<'owner, $rental<'owner $(, $param)*>>,
 		{
 			#[inline(always)]
-			fn deref_mut(&mut self) -> &mut <$rental<'owner $(, $param)*> as Deref>::Target { unsafe { self.rental_target_mut() } }
+			fn deref_mut(&mut self) -> &mut <$rental<'rental $(, $param)*> as Deref>::Target { unsafe { self.rental_target_mut() } }
 		}
 
 
-		impl<'rental $(, $param)*> Drop for $rental<'rental $(, $param)*> where
+		impl<'owner $(, $param)*> Drop for $rental<'owner $(, $param)*> where
 			$owner_ty: FixedDeref + DerefMut,
 		{
 			fn drop(&mut self) {
@@ -237,13 +246,13 @@ macro_rules! rental {
 
 
 	{
-		@ITEM pub rental $rental:ident<'owner $(, $param:tt)*> where [$($clause:tt)*] (
+		@ITEM pub rental $rental:ident<'rental $(, $param:tt)*> where [$($clause:tt)*] (
 			$owner_ty:ty,
 			$rental_ty:ty$(,)*
 		);
 		$($rest:tt)*
 	} => {
-		pub struct $rental<'owner $(, $param)*> where
+		pub struct $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref, $($clause)*
 		{
 			owner: Option<$owner_ty>,
@@ -251,13 +260,13 @@ macro_rules! rental {
 		}
 
 
-		impl<'rental $(, $param)*> $rental<'rental $(, $param)*> where
+		impl<'owner $(, $param)*> $rental<'owner $(, $param)*> where
 			$owner_ty: FixedDeref
 		{
 			#[allow(dead_code)]
 			pub fn new<F__>(owner: $owner_ty, f: F__)
-				-> $rental<'rental $(, $param)*> where
-				F__: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> $rental_ty
+				-> $rental<'owner $(, $param)*> where
+				F__: for<'rental> FnOnce(&'rental <$owner_ty as Deref>::Target) -> $rental_ty
 			{
 				$rental{
 					rental: unsafe {
@@ -270,8 +279,8 @@ macro_rules! rental {
 
 			#[allow(dead_code)]
 			pub fn try_new<E__, F__>(owner: $owner_ty, f: F__)
-				-> Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'owner> FnOnce(&'owner <$owner_ty as Deref>::Target) -> Result<$rental_ty, E__>
+				-> Result<$rental<'owner $(, $param)*>, (E__, $owner_ty)> where
+				F__: for<'rental> FnOnce(&'rental <$owner_ty as Deref>::Target) -> Result<$rental_ty, E__>
 			{
 				Ok($rental{
 					rental: unsafe {
@@ -294,14 +303,14 @@ macro_rules! rental {
 
 			#[allow(dead_code)]
 			pub fn rent<'s, F__, R__>(&'s self, f: F__) -> R__ where
-				F__: for<'owner: 's> FnOnce(&'s $rental_ty) -> R__, R__: 's
+				F__: for<'rental: 's> FnOnce(&'s $rental_ty) -> R__, R__: 's
 			{
 				f(self.rental.as_ref().unwrap())
 			}
 		}
 
 
-		unsafe impl<'owner $(, $param)*> Rental<'owner> for $rental<'owner $(, $param)*> where
+		unsafe impl<'rental $(, $param)*> Rental<'rental> for $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref,
 			$($clause)*
 		{
@@ -317,18 +326,18 @@ macro_rules! rental {
 		}
 
 
-		impl<'owner $(, $param)*> Deref for $rental<'owner $(, $param)*> where
+		impl<'rental $(, $param)*> Deref for $rental<'rental $(, $param)*> where
 			$owner_ty: FixedDeref,
-			$rental<'owner $(, $param)*>: RentalDeref<'owner> + for<'rental> RentalDerefEq<'rental, $rental<'rental $(, $param)*>>,
+			$rental<'rental $(, $param)*>: RentalDeref<'rental> + for<'owner> RentalDerefEq<'owner, $rental<'owner $(, $param)*>>,
 		{
-			type Target = <$rental<'owner $(, $param)*> as RentalDeref<'owner>>::Target;
+			type Target = <$rental<'rental $(, $param)*> as RentalDeref<'rental>>::Target;
 
 			#[inline(always)]
-			fn deref(&self) -> &<$rental<'owner $(, $param)*> as RentalDeref<'owner>>::Target { unsafe { self.rental_target() } }
+			fn deref(&self) -> &<$rental<'rental $(, $param)*> as RentalDeref<'rental>>::Target { unsafe { self.rental_target() } }
 		}
 
 
-		impl<'rental $(, $param)*> Drop for $rental<'rental $(, $param)*> where
+		impl<'owner $(, $param)*> Drop for $rental<'owner $(, $param)*> where
 			$owner_ty: FixedDeref
 		{
 			fn drop(&mut self) {
@@ -343,17 +352,17 @@ macro_rules! rental {
 
 
 	{
-		@ITEM pub mapper $mapper:ident<'owner $(, $param:tt)*>($($from_ty:tt)*) -> ($($into_ty:tt)*) where [$($clause:tt)*];
+		@ITEM pub mapper $mapper:ident<'rental $(, $param:tt)*>($($from_ty:tt)*) -> ($($into_ty:tt)*) where [$($clause:tt)*];
 		$($rest:tt)*
 	} => {
 		#[allow(dead_code)]
 		pub struct $mapper;
 		impl $mapper {
 			#[allow(dead_code)]
-			pub fn map<'owner $(, $param)*, T__, U__, F__>(t: T__, f: F__) -> U__ where
-				T__: Rental<'owner, Rental=$($from_ty)*>,
-				U__: Rental<'owner, Owner=<T__ as Rental<'owner>>::Owner, Rental=$($into_ty)*>,
-				F__: for<'rental: 'owner> FnOnce(rental_rebind!('rental {} $($from_ty)*)) -> rental_rebind!('rental {} $($into_ty)*),
+			pub fn map<'rental $(, $param)*, T__, U__, F__>(t: T__, f: F__) -> U__ where
+				T__: Rental<'rental, Rental=$($from_ty)*>,
+				U__: Rental<'rental, Owner=<T__ as Rental<'rental>>::Owner, Rental=$($into_ty)*>,
+				F__: for<'owner: 'rental> FnOnce(rental_rebind!('owner {} $($from_ty)*)) -> rental_rebind!('owner {} $($into_ty)*),
 				$($clause)*
 			{
 				unsafe { 
@@ -364,10 +373,10 @@ macro_rules! rental {
 
 
 			#[allow(dead_code)]
-			pub fn try_map<'owner $(, $param)*, T__, U__, E__, F__>(t: T__, f: F__) -> Result<U__, (E__, T__)> where
-				T__: Rental<'owner, Rental=$($from_ty)*>,
-				U__: Rental<'owner, Owner=<T__ as Rental<'owner>>::Owner, Rental=$($into_ty)*>,
-				F__: for<'rental: 'owner> FnOnce(rental_rebind!('rental {} $($from_ty)*)) -> Result<rental_rebind!('rental {} $($into_ty)*), (E__, rental_rebind!('rental {} $($from_ty)*))>,
+			pub fn try_map<'rental $(, $param)*, T__, U__, E__, F__>(t: T__, f: F__) -> Result<U__, (E__, T__)> where
+				T__: Rental<'rental, Rental=$($from_ty)*>,
+				U__: Rental<'rental, Owner=<T__ as Rental<'rental>>::Owner, Rental=$($into_ty)*>,
+				F__: for<'owner: 'rental> FnOnce(rental_rebind!('owner {} $($from_ty)*)) -> Result<rental_rebind!('owner {} $($into_ty)*), (E__, rental_rebind!('owner {} $($from_ty)*))>,
 				$($clause)*
 			{
 				unsafe { 
@@ -386,14 +395,14 @@ macro_rules! rental {
 
 
 	{
-		@ITEM pub rental $rental:ident<'owner $(, $param:tt)*>($($body:tt)*); $($rest:tt)*
+		@ITEM pub rental $rental:ident<'rental $(, $param:tt)*>($($body:tt)*); $($rest:tt)*
 	} => {
-		rental!{@ITEM pub rental $rental<'owner $(, $param)*> where [] ($($body)*); $($rest)*}
+		rental!{@ITEM pub rental $rental<'rental $(, $param)*> where [] ($($body)*); $($rest)*}
 	};
 	{
-		@ITEM pub mapper $mapper:ident<'owner $(, $param:tt)*> ($($from_ty:tt)*) -> ($($into_ty:tt)*); $($rest:tt)*
+		@ITEM pub mapper $mapper:ident<'rental $(, $param:tt)*> ($($from_ty:tt)*) -> ($($into_ty:tt)*); $($rest:tt)*
 	} => {
-		rental!{@ITEM pub mapper $mapper<'owner $(, $param)*> ($($from_ty)*) -> ($($into_ty)*) where []; $($rest)*}
+		rental!{@ITEM pub mapper $mapper<'rental $(, $param)*> ($($from_ty)*) -> ($($into_ty)*) where []; $($rest)*}
 	};
 	{ @ITEM } => { };
 }
@@ -403,7 +412,7 @@ macro_rules! rental {
 #[macro_export]
 macro_rules! rental_rebind {
 	(
-		$into:tt {$($head:tt)*} 'owner $($tail:tt)*
+		$into:tt {$($head:tt)*} 'rental $($tail:tt)*
 	) => {
 		rental_rebind!($into {$($head)* $into} $($tail)*)
 	};
@@ -473,56 +482,56 @@ unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockReadGuard<'t, T> { }
 unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockWriteGuard<'t, T> { }
 
 
-pub unsafe trait Rental<'rental> {
-	type Owner: FixedDeref + 'rental;
-	type Rental: 'rental;
+pub unsafe trait Rental<'owner> {
+	type Owner: FixedDeref + 'owner;
+	type Rental: 'owner;
 
-	unsafe fn rental(&self) -> &<Self as Rental<'rental>>::Rental;
-	unsafe fn from_parts(<Self as Rental<'rental>>::Owner, <Self as Rental<'rental>>::Rental) -> Self;
-	unsafe fn into_parts(self) -> (<Self as Rental<'rental>>::Owner, <Self as Rental<'rental>>::Rental);
-	fn into_owner(self) -> <Self as Rental<'rental>>::Owner;
+	unsafe fn rental(&self) -> &<Self as Rental<'owner>>::Rental;
+	unsafe fn from_parts(<Self as Rental<'owner>>::Owner, <Self as Rental<'owner>>::Rental) -> Self;
+	unsafe fn into_parts(self) -> (<Self as Rental<'owner>>::Owner, <Self as Rental<'owner>>::Rental);
+	fn into_owner(self) -> <Self as Rental<'owner>>::Owner;
 }
 
 
-pub unsafe trait RentalMut<'rental>: Rental<'rental> {
-	unsafe fn rental_mut(&mut self) -> &mut <Self as Rental<'rental>>::Rental;
+pub unsafe trait RentalMut<'owner>: Rental<'owner> {
+	unsafe fn rental_mut(&mut self) -> &mut <Self as Rental<'owner>>::Rental;
 }
 
 
 #[doc(hidden)]
-pub unsafe trait RentalDeref<'rental> {
+pub unsafe trait RentalDeref<'owner> {
 	type Target: ?Sized;
 
-	unsafe fn rental_target<'s>(&'s self) -> &<Self as RentalDeref<'rental>>::Target where 'rental: 's;
+	unsafe fn rental_target<'s>(&'s self) -> &<Self as RentalDeref<'owner>>::Target where 'owner: 's;
 }
 
 
 #[doc(hidden)]
-pub unsafe trait RentalDerefMut<'rental>: RentalDeref<'rental> {
-	unsafe fn rental_target_mut<'s>(&'s mut self) -> &mut <Self as RentalDeref<'rental>>::Target where 'rental: 's;
+pub unsafe trait RentalDerefMut<'owner>: RentalDeref<'owner> {
+	unsafe fn rental_target_mut<'s>(&'s mut self) -> &mut <Self as RentalDeref<'owner>>::Target where 'owner: 's;
 }
 
 
 #[doc(hidden)]
-pub unsafe trait RentalDerefEq<'rental, U: RentalDeref<'rental>> { }
+pub unsafe trait RentalDerefEq<'owner, U: RentalDeref<'owner>> { }
 
 
-unsafe impl<'rental, T> RentalDeref<'rental> for T where
-	T: Rental<'rental>, <T as Rental<'rental>>::Rental: Deref
+unsafe impl<'owner, T> RentalDeref<'owner> for T where
+	T: Rental<'owner>, <T as Rental<'owner>>::Rental: Deref
 {
-	type Target = <<T as Rental<'rental>>::Rental as Deref>::Target;
+	type Target = <<T as Rental<'owner>>::Rental as Deref>::Target;
 
 	#[inline(always)]
-	unsafe fn rental_target<'s>(&'s self) -> &<T as RentalDeref<'rental>>::Target where 'rental: 's { &**self.rental() }
+	unsafe fn rental_target<'s>(&'s self) -> &<T as RentalDeref<'owner>>::Target where 'owner: 's { &**self.rental() }
 }
 
 
-unsafe impl<'rental, T> RentalDerefMut<'rental> for T where
-	T: RentalMut<'rental> + RentalDeref<'rental, Target=<<T as Rental<'rental>>::Rental as Deref>::Target>,
-	<T as Rental<'rental>>::Rental: DerefMut,
+unsafe impl<'owner, T> RentalDerefMut<'owner> for T where
+	T: RentalMut<'owner> + RentalDeref<'owner, Target=<<T as Rental<'owner>>::Rental as Deref>::Target>,
+	<T as Rental<'owner>>::Rental: DerefMut,
 {
 	#[inline(always)]
-	unsafe fn rental_target_mut<'s>(&'s mut self) -> &mut <T as RentalDeref<'rental>>::Target where 'rental: 's { &mut **self.rental_mut() }
+	unsafe fn rental_target_mut<'s>(&'s mut self) -> &mut <T as RentalDeref<'owner>>::Target where 'owner: 's { &mut **self.rental_mut() }
 }
 
 
@@ -534,10 +543,10 @@ unsafe impl<'t, 'u, T, U> RentalDerefEq<'u, U> for T where
 
 rental! {
 	mod premade {
-		pub rental RentRef<'owner, T, B> where [T: FixedDeref + 'owner, B: 'owner] (T, &'owner B);
-		pub rental RentMut<'owner, T, B> where [T: FixedDeref + DerefMut + 'owner, B: 'owner] (mut T, &'owner mut B);
-		pub mapper MapRef<'owner, T, U>(&'owner T) -> (&'owner U) where [T: 'owner, U: 'owner];
-		pub mapper MapMut<'owner, T, U>(&'owner mut T) -> (&'owner mut U) where [T: 'owner, U: 'owner];
+		pub rental RentRef<'rental, T, B> where [T: FixedDeref + 'rental, B: 'rental] (T, &'rental B);
+		pub rental RentMut<'rental, T, B> where [T: FixedDeref + DerefMut + 'rental, B: 'rental] (mut T, &'rental mut B);
+		pub mapper MapRef<'rental, T, U>(&'rental T) -> (&'rental U) where [T: 'rental, U: 'rental];
+		pub mapper MapMut<'rental, T, U>(&'rental mut T) -> (&'rental mut U) where [T: 'rental, U: 'rental];
 	}
 }
 
@@ -545,19 +554,19 @@ rental! {
 pub use premade::*;
 
 
-pub type RentArc<'owner, T: 'owner, B: 'owner> = RentRef<'owner, sync::Arc<T>, B>;
-pub type RentBox<'owner, T: 'owner, B: 'owner> = RentRef<'owner, Box<T>, B>;
-pub type RentBoxMut<'owner, T: 'owner, B: 'owner> = RentMut<'owner, Box<T>, B>;
-pub type RentMutex<'owner, T: 'owner, B: 'owner> = RentRef<'owner, sync::MutexGuard<'owner, T>, B>;
-pub type RentMutexMut<'owner, T: 'owner, B: 'owner> = RentMut<'owner, sync::MutexGuard<'owner, T>, B>;
-pub type RentRefCell<'owner, T: 'owner, B: 'owner> = RentRef<'owner, cell::Ref<'owner, T>, B>;
-pub type RentRefCellMut<'owner, T: 'owner, B: 'owner> = RentMut<'owner, cell::RefMut<'owner, T>, B>;
-pub type RentRwLock<'owner, T: 'owner, B: 'owner> = RentRef<'owner, sync::RwLockReadGuard<'owner, T>, B>;
-pub type RentRwLockMut<'owner, T: 'owner, B: 'owner> = RentMut<'owner, sync::RwLockWriteGuard<'owner, T>, B>;
-pub type RentString<'owner, B: 'owner> = RentRef<'owner, String, B>;
-pub type RentStringMut<'owner, B: 'owner> = RentMut<'owner, String, B>;
-pub type RentVec<'owner, T: 'owner, B: 'owner> = RentRef<'owner, Vec<T>, B>;
-pub type RentVecMut<'owner, T: 'owner, B: 'owner> = RentMut<'owner, Vec<T>, B>;
+pub type RentArc<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::Arc<T>, B>;
+pub type RentBox<'rental, T: 'rental, B: 'rental> = RentRef<'rental, Box<T>, B>;
+pub type RentBoxMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, Box<T>, B>;
+pub type RentMutex<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::MutexGuard<'rental, T>, B>;
+pub type RentMutexMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, sync::MutexGuard<'rental, T>, B>;
+pub type RentRefCell<'rental, T: 'rental, B: 'rental> = RentRef<'rental, cell::Ref<'rental, T>, B>;
+pub type RentRefCellMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, cell::RefMut<'rental, T>, B>;
+pub type RentRwLock<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::RwLockReadGuard<'rental, T>, B>;
+pub type RentRwLockMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, sync::RwLockWriteGuard<'rental, T>, B>;
+pub type RentString<'rental, B: 'rental> = RentRef<'rental, String, B>;
+pub type RentStringMut<'rental, B: 'rental> = RentMut<'rental, String, B>;
+pub type RentVec<'rental, T: 'rental, B: 'rental> = RentRef<'rental, Vec<T>, B>;
+pub type RentVecMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, Vec<T>, B>;
 
 
 #[cfg(test)]
@@ -628,10 +637,10 @@ mod test {
 
 	rental!{
 		mod test {
-			pub rental Foo<'owner, T> where [T: 'owner] (Box<super::Foo<T>>, super::FooBorrow<'owner, T>);
-			pub rental FooMut<'owner, T> where [T: 'owner] (mut Box<super::Foo<T>>, super::FooBorrowMut<'owner, T>);
-			pub mapper MapFoo<'owner, T> (super::FooBorrow<'owner, T>) -> (super::FooBorrow<'owner, T>) where [T: 'owner];
-			pub mapper MapFooMut<'owner, T> (super::FooBorrowMut<'owner, T>) -> (super::FooBorrowMut<'owner, T>) where [T: 'owner];
+			pub rental Foo<'rental, T> where [T: 'rental] (Box<super::Foo<T>>, super::FooBorrow<'rental, T>);
+			pub rental FooMut<'rental, T> where [T: 'rental] (mut Box<super::Foo<T>>, super::FooBorrowMut<'rental, T>);
+			pub mapper MapFoo<'rental, T> (super::FooBorrow<'rental, T>) -> (super::FooBorrow<'rental, T>) where [T: 'rental];
+			pub mapper MapFooMut<'rental, T> (super::FooBorrowMut<'rental, T>) -> (super::FooBorrowMut<'rental, T>) where [T: 'rental];
 		}
 	}
 
