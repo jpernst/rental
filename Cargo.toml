@@ -3,5 +3,5 @@ name = "rental"
 version = "0.2.0"
 license = "MIT/Apache-2.0"
 authors = ["Jameson Ernst <jameson@jpernst.com>"]
-description = "A macro to generate self-borrowing structs."
+description = "A macro to generate self-borrowing structs, plus premade types for convenience."
 repository = "https://github.com/jpernst/rental"
