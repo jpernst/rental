@@ -90,7 +90,7 @@
 /// `Deref` target of the rented type. This can't be inferred, because it must
 /// be checked to ensure that it does NOT contain the `'rental` lifetime
 /// anywhere in its signature. If it does, then implementing `Deref` would be
-/// unsafe.
+/// unsafe, and the macro will reject it.
 ///
 /// It should also be noted that trait bounds and where clauses must be
 /// enclosed in square brackets, e.g. `T: [MyTrait]` or `where [T: MyTrait]`.
@@ -183,7 +183,7 @@ macro_rules! rental {
 		/// [`Rental`](trait.Rental.html) and
 		/// [`RentalMut`](trait.RentalMut.html) traits.
 		///
-		/// A rental struct will implement `Deref` and `DerefMut`, but only if
+		/// A rental struct can implement `Deref` and `DerefMut`, but only if
 		/// the rented type is `Deref`/`DerefMut` and its target does not
 		/// contain the `'rental` lifetime in its signature. 
 		#[deny(lifetime_underscore)]
@@ -349,7 +349,7 @@ macro_rules! rental {
 		/// [`Rental`](trait.Rental.html) and
 		/// [`RentalMut`](trait.RentalMut.html) traits.
 		///
-		/// A rental struct will implement `Deref`, but only if the rented type
+		/// A rental struct can implement `Deref`, but only if the rented type
 		/// is `Deref` and its target does not contain the `'rental` lifetime
 		/// in its signature. 
 		#[deny(lifetime_underscore)]
@@ -366,9 +366,9 @@ macro_rules! rental {
 			$owner_ty: FixedDeref,
 			$($clause)*
 		{
-			/// Instantiate a new mutable rental pair. `owner` is the object
+			/// Instantiate a new shared rental pair. `owner` is the object
 			/// from which a value will be rented. The closure takes a
-			/// reborrowed mutable reference to the owner's `Deref` target, and
+			/// reborrowed shared reference to the owner's `Deref` target, and
 			/// returns the rented value. Within this closure, the special
 			/// `'rental` lifetime is "existential" and cannot be unified with
 			/// any external lifetime. This is crucial in that it prevents any
