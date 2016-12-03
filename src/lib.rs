@@ -142,7 +142,7 @@ macro_rules! rental {
 			use ::std::result::Result;
 			use ::std::mem;
 
-			use $crate::{FixedDeref, Rental, RentalMut, NoDeref};
+			use $crate::{FixedDeref, Rental, RentalMut};
 
 			rental!{@ITEM $($items)*}
 		}
@@ -159,7 +159,7 @@ macro_rules! rental {
 			use ::std::result::Result;
 			use ::std::mem;
 
-			use $crate::{FixedDeref, Rental, RentalMut, NoDeref};
+			use $crate::{FixedDeref, Rental, RentalMut};
 
 			rental!{@ITEM $($items)*}
 		}
@@ -616,6 +616,7 @@ macro_rules! rental_deref_ty__ {
 
 use std::ops::Deref;
 use std::{cell, rc, sync};
+
 
 /// This trait indicates both that the type can be dereferenced, and that when
 /// it is, the target has a fixed memory address while it is held by a rental
