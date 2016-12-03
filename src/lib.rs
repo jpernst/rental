@@ -643,7 +643,7 @@ unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockReadGuard<'t, T> { }
 unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockWriteGuard<'t, T> { }
 
 
-/// This trait is implement for all generated rental types.
+/// This trait is implemented for all generated rental structs.
 ///
 /// It contains within everything that is possible to express without HKT. The
 /// most important methods can't be expressed here, but can be seen on the
@@ -671,7 +671,7 @@ pub unsafe trait Rental {
 	/// borrow.
 	unsafe fn into_parts(self) -> (<Self as Rental>::Owner, <Self as Rental>::Rental);
 
-	/// This sill consume a rental struct and return to you the owner,
+	/// This will consume a rental struct and return to you the owner,
 	/// discarding the rented value.
 	fn into_owner(self) -> <Self as Rental>::Owner;
 }
