@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //! A macro to generate self-borrowing structs, plus a few predefined type
 //! aliases for convenience.
 //!
@@ -26,10 +28,10 @@
 //! [`RentRef`](struct.RentRef.html) and [`RentMut`](struct.RentMut.html), as
 //! well as the associated type aliases for common rental scenarios. The
 //! documentation for the [`rental`](macro.rental.html) macro describes the
-//! kinds of items that can be generated. 
+//! kinds of items that can be generated.
 
 
-/// This macro is the bedrock of the API. It allows you to define three 
+/// This macro is the bedrock of the API. It allows you to define three
 /// different kinds of items related to renting.
 ///
 /// NOTE: This macro is only necessary to use if you want to define new rental
@@ -49,7 +51,7 @@
 /// Both forms are tuple-structs that contain an (owner, borrow) pair. Both
 /// have a similar API, with minor differences pointed out below. They are
 /// declared as follows:
-/// 
+///
 /// ```rust,ignore
 /// // Shared
 /// pub rental $rental:ident<'rental $(, $param:tt $(: [$($bounds:tt)*])*)*> (
@@ -137,10 +139,10 @@ macro_rules! rental {
 	} => {
 		mod $rental_mod {
 			#![allow(unused_imports)]
-			use ::std::ops::{Deref, DerefMut};
-			use ::std::ops::Drop;
-			use ::std::result::Result;
-			use ::std::mem;
+			use ::core::ops::{Deref, DerefMut};
+			use ::core::ops::Drop;
+			use ::core::result::Result;
+			use ::core::mem;
 
 			use $crate::{FixedDeref, Rental, RentalMut};
 
@@ -154,10 +156,10 @@ macro_rules! rental {
 	} => {
 		pub mod $rental_mod {
 			#![allow(unused_imports)]
-			use ::std::ops::{Deref, DerefMut};
-			use ::std::ops::Drop;
-			use ::std::result::Result;
-			use ::std::mem;
+			use ::core::ops::{Deref, DerefMut};
+			use ::core::ops::Drop;
+			use ::core::result::Result;
+			use ::core::mem;
 
 			use $crate::{FixedDeref, Rental, RentalMut};
 
@@ -185,7 +187,7 @@ macro_rules! rental {
 		///
 		/// A rental struct can implement `Deref` and `DerefMut`, but only if
 		/// the rented type is `Deref`/`DerefMut` and its target does not
-		/// contain the `'rental` lifetime in its signature. 
+		/// contain the `'rental` lifetime in its signature.
 		#[deny(lifetime_underscore)]
 		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
 			$owner_ty: FixedDeref + DerefMut,
@@ -351,7 +353,7 @@ macro_rules! rental {
 		///
 		/// A rental struct can implement `Deref`, but only if the rented type
 		/// is `Deref` and its target does not contain the `'rental` lifetime
-		/// in its signature. 
+		/// in its signature.
 		#[deny(lifetime_underscore)]
 		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
 			$owner_ty: FixedDeref,
@@ -497,7 +499,7 @@ macro_rules! rental {
 				F__: for<'f__: 'rental> FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> rental_rebind__!('f__ $($into_ty)*),
 				$($clause)*
 			{
-				unsafe { 
+				unsafe {
 					let (o, r) = t.into_parts();
 					U__::from_parts(o, f(r))
 				}
@@ -516,7 +518,7 @@ macro_rules! rental {
 				F__: for<'f__: 'rental> FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> Result<rental_rebind__!('f__ $($into_ty)*), (E__, rental_rebind__!('f__ $($from_ty)*))>,
 				$($clause)*
 			{
-				unsafe { 
+				unsafe {
 					let (o, r) = t.into_parts();
 					match f(r) {
 						Ok(r) => Ok(U__::from_parts(o, r)),
@@ -613,9 +615,13 @@ macro_rules! rental_deref_ty__ {
 	( $($deref_ty:tt)+ ) => { rental_rebind__!('_ $($deref_ty)+) };
 }
 
+#[cfg(feature = "std")]
+extern crate core;
 
-use std::ops::Deref;
-use std::{cell, rc, sync};
+use ::core::ops::Deref;
+use ::core::cell;
+#[cfg(feature = "std")]
+use std::{rc, sync};
 
 
 /// This trait indicates both that the type can be dereferenced, and that when
@@ -630,17 +636,25 @@ pub unsafe trait FixedDeref: Deref { }
 unsafe impl<'t, T: ?Sized> FixedDeref for &'t T { }
 unsafe impl<'t, T: ?Sized> FixedDeref for &'t mut T { }
 
+#[cfg(feature = "std")]
 unsafe impl<T: ?Sized> FixedDeref for Box<T> { }
+#[cfg(feature = "std")]
 unsafe impl<T> FixedDeref for Vec<T> { }
+#[cfg(feature = "std")]
 unsafe impl FixedDeref for String { }
 
+#[cfg(feature = "std")]
 unsafe impl<T: ?Sized> FixedDeref for rc::Rc<T> { }
+#[cfg(feature = "std")]
 unsafe impl<T: ?Sized> FixedDeref for sync::Arc<T> { }
 
 unsafe impl<'t, T: ?Sized> FixedDeref for cell::Ref<'t, T> { }
 unsafe impl<'t, T: ?Sized> FixedDeref for cell::RefMut<'t, T> { }
+#[cfg(feature = "std")]
 unsafe impl<'t, T: ?Sized> FixedDeref for sync::MutexGuard<'t, T> { }
+#[cfg(feature = "std")]
 unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockReadGuard<'t, T> { }
+#[cfg(feature = "std")]
 unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockWriteGuard<'t, T> { }
 
 
@@ -715,6 +729,7 @@ pub use premade::*;
 /// let rent = rental::RentArc::new(arc, |a| &*a);
 /// assert_eq!(*rent, 1);
 /// ```
+#[cfg(feature = "std")]
 pub type RentArc<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::Arc<T>, B>;
 
 /// A predefined type that rents values from a `Box<T>`.
@@ -724,6 +739,7 @@ pub type RentArc<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::Arc<T
 /// let rent = rental::RentBox::new(bx, |b| &*b);
 /// assert_eq!(*rent, 2);
 /// ```
+#[cfg(feature = "std")]
 pub type RentBox<'rental, T: 'rental, B: 'rental> = RentRef<'rental, Box<T>, B>;
 
 /// A predefined type that rents mutable values from a `Box<T>`.
@@ -734,6 +750,7 @@ pub type RentBox<'rental, T: 'rental, B: 'rental> = RentRef<'rental, Box<T>, B>;
 /// *rent *= 10;
 /// assert_eq!(*rent, 30);
 /// ```
+#[cfg(feature = "std")]
 pub type RentBoxMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, Box<T>, B>;
 
 /// A predefined type that rents values from a `MutexGuard<T>`.
@@ -744,6 +761,7 @@ pub type RentBoxMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, Box<T>, 
 /// let rent = rental::RentMutex::new(guard, |g| &*g);
 /// assert_eq!(*rent, 4);
 /// ```
+#[cfg(feature = "std")]
 pub type RentMutex<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::MutexGuard<'rental, T>, B>;
 
 /// A predefined type that rents mutable values from a `MutexGuard<T>`.
@@ -755,6 +773,7 @@ pub type RentMutex<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::Mut
 /// *rent *= 10;
 /// assert_eq!(*rent, 50);
 /// ```
+#[cfg(feature = "std")]
 pub type RentMutexMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, sync::MutexGuard<'rental, T>, B>;
 
 /// A predefined type that rents values from a `Ref<T>`.
@@ -786,6 +805,7 @@ pub type RentRefCellMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, cell
 /// let rent = rental::RentRwLock::new(read, |r| &*r);
 /// assert_eq!(*rent, 8);
 /// ```
+#[cfg(feature = "std")]
 pub type RentRwLock<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::RwLockReadGuard<'rental, T>, B>;
 
 /// A predefined type that rents mutable values from an `RwLockWriteGuard<T>`.
@@ -797,6 +817,7 @@ pub type RentRwLock<'rental, T: 'rental, B: 'rental> = RentRef<'rental, sync::Rw
 /// *rent *= 10;
 /// assert_eq!(*rent, 90);
 /// ```
+#[cfg(feature = "std")]
 pub type RentRwLockMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, sync::RwLockWriteGuard<'rental, T>, B>;
 
 /// A predefined type that rents values from a `String`.
@@ -806,6 +827,7 @@ pub type RentRwLockMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, sync:
 /// let rent = rental::RentString::new(s, |s| &s[0..5]);
 /// assert_eq!(&*rent, "Hello");
 /// ```
+#[cfg(feature = "std")]
 pub type RentString<'rental, B: 'rental> = RentRef<'rental, String, B>;
 
 /// A predefined type that rents mutable values from a `String`.
@@ -818,6 +840,7 @@ pub type RentString<'rental, B: 'rental> = RentRef<'rental, String, B>;
 /// rent.make_ascii_uppercase();
 /// assert_eq!(&*rent, "HELLO");
 /// ```
+#[cfg(feature = "std")]
 pub type RentStringMut<'rental, B: 'rental> = RentMut<'rental, String, B>;
 
 /// A predefined type that rents values from a `Vec<T>`.
@@ -827,6 +850,7 @@ pub type RentStringMut<'rental, B: 'rental> = RentMut<'rental, String, B>;
 /// let rent = rental::RentVec::new(v, |v| &v[0..2]);
 /// assert_eq!(rent.len(), 2);
 /// ```
+#[cfg(feature = "std")]
 pub type RentVec<'rental, T: 'rental, B: 'rental> = RentRef<'rental, Vec<T>, B>;
 
 /// A predefined type that rents mutable values from a `Vec<T>`.
@@ -838,12 +862,13 @@ pub type RentVec<'rental, T: 'rental, B: 'rental> = RentRef<'rental, Vec<T>, B>;
 /// rent[0] += rent[1];
 /// assert_eq!(&*rent, [5, 4]);
 /// ```
+#[cfg(feature = "std")]
 pub type RentVecMut<'rental, T: 'rental, B: 'rental> = RentMut<'rental, Vec<T>, B>;
 
 
 #[cfg(test)]
 mod test {
-	use std::ops::{Deref, DerefMut};
+	use ::core::ops::{Deref, DerefMut};
 
 
 	pub struct Foo<T> {
