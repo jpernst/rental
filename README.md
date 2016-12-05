@@ -2,9 +2,15 @@
 
 [Documentation](http://docs.rs/rental)
 
-Rental is a crate designed to handle generalized cases where a struct needs to borrow its own contents. This can arise as an implementation detail in an API that you don't want to expose to your users by making them handle the borrowed lifetime. Instead, you can just present a single, owned struct that they can move around as normal. To achieve this, the rental macro is used to define new types that represent pairs of an owner and a borrow associated with that owner. These can then be handled as a single unit. Naturally this is very unsafe by nature, so great care is taken to make sure no borrows can escape that will outlive the struct, or that short-lived data will be squirrelled into the struct.
+It can sometimes occur in the course of designing an API that you find yourself in a situation where you need to store, in a single struct, both an owned value and a borrow of that value. Rust's concept of ownership and borrowing is quite flexible, but can't quite express such a scenario.
 
-One motivating case for me was being able to store a [`libloading`](https://crates.io/crates/libloading) `Library` and the `Symbol`s loaded from it in a single `Api` struct. Under normal circumstances this would be impossible, but rental allows you to define a type that can do it safely (well, aside from the natural unsafety of calling symbols loaded from a dynamic library). Declaring that type looks as follows:
+This crate uses the term "rental" to describe this concept of a borrow that co-exsists with its owner in the same struct. The borrow itself is called the "rented" type. The "owner", naturally, is the item in the struct that owns the borrow.
+
+The API consists of the `rental` macro, which generates rental structs, and a few premade instantiations of this macro handling rented bare references.  If you only need to rent references, see `RentRef` and `RentMut`, as well as the associated type aliases for common rental scenarios. The documentation for the `rental` macro describes the kinds of items that can be generated. 
+
+One example might be `libloading`. That crate provides a `Library` struct that defines methods to borrow `Symbol`s from it. These symbols are bounded by the lifetime of the library, and are thus considered a borrow. Under normal circumstances, one would be unable to store both the library and the symbols within a single struct, but the macro defined in this crate allows you to define a struct that is capable of storing both simultaneously.
+
+Such a struct can be declared like this:
 
 ```rust
 rental!{
@@ -14,16 +20,28 @@ rental!{
 }
 ```
 
-This defines a new struct that can hold a `Library`, and a `Symbol` loaded from it. The `'rental` lifetime is handled specially and represents the shared connection between the owner and the borrow.
+This defines a new struct that can hold an `Arc` of a `Library`, and a `Symbol` loaded from it. An `Arc` is used here so that the library can be shared with other such structs. The `'rental` lifetime is handled specially and represents the shared connection between the owner and the borrow. The lifetime `'rental` appears as the bound on the `Symbol`, because that is the lifetime that will be attached when you obtain the `Symbol` by calling `Library::get` inside the creation closure.
 
+For a type to be eligible as an owner, it must also implement the `FixedDeref` trait. Because the rental struct can be moved freely, the internal borrow could be invalidated if it refers to data that has been moved. For this reason, The owner must be `Deref`, and furthermove must deref to a fixed memory address for the life of the rental. `FixedDeref` is an unsafe trait that reflects these requirements. Finally, after the declaration, you may optionally add `: Deref(Target)` where `Target` is the `Deref` target of the rented type. This can't be inferred, because it must be checked to ensure that it does NOT contain the `'rental` lifetime anywhere in its signature. If it does, then implementing `Deref` would be unsafe, and the macro will reject it.
+ 
 To create an instance:
 
 ```rust
-RentSym::try_new(lib, |l| unsafe { l.get(b"my_symbol") })
+let sym = RentSym::try_new(lib, |lib| unsafe { lib.get::<fn()>(b"my_symbol") })
 ```
 
 NOTE: The `unsafe` here is solely because loading a symbol from the dylib is unsafe, unrelated to this library, I promise :)
 
-Inside this closure, the `'rental` lifetime becomes "existential" and cannot be satisfied by anything outside the closure, preventing anything tied to it from being exfiltrated. The `Deref(S)` attached to the struct definition means that the struct will deref to the `S` type of the Symbol. This is safe only because the `'rental` lifetime does NOT appear in the type signature of `S`. If it did, the derefed lifetime would be a lie and unsafety would ensue. The macro takes steps to ensure the type is compliant and will prevent `Deref` from being impld if it fails. In such cases, the borrowed value can instead by accessed with the `rent` method that gives you an existentially bound reference to the inner data that you can manipulate safely and return anything from (as long as it does not include the `'rental` lifetime).
+Inside this closure, the `'rental` lifetime becomes "existential" and cannot be satisfied by anything outside the closure, preventing anything tied to it from being exfiltrated. The function held by the struct can then be called by simply:
 
-This crate also provides predefined types `RentRef` and `RentMut` for the simple case where you only need to store a borrowed reference along with its owner, and serve as examples for the documentation.
+```rust
+sym();
+```
+
+In this way, the symbol can be carried around and called as a single unit, but retains within it the library that it depends on. The user is thus relieved of the concern of keeping the library alive, or even knowing that it exists at all.
+
+In cases where the rented valued is not `Deref` or does not meet the requirements for a safe `Deref` impl as described earlier, you can access the internal value with the `rent` method, which will pass to you an existentially bound reference to the rented value. The example above could also be written like this:
+
+```rust
+sym.rent(|s| s());
+```

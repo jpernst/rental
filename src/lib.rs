@@ -24,7 +24,7 @@
 //! rental structs, and a few premade instantiations of this macro handling
 //! rented bare references.  If you only need to rent references, see
 //! [`RentRef`](struct.RentRef.html) and [`RentMut`](struct.RentMut.html), as
-//! well as the associated type aliases for common rental scenarios. The
+//! well as the related type aliases for common rental scenarios. The
 //! documentation for the [`rental`](macro.rental.html) macro describes the
 //! kinds of items that can be generated. 
 
@@ -36,7 +36,7 @@
 /// types that can store customized forms of borrow other than a bare reference.
 /// For bare references, this crate provides premade types, called
 /// [`RentRef`](struct.RentRef.html) and [`RentMut`](struct.RentMut.html), that
-/// accomplish this. Several types aliases are also provided for common
+/// accomplish this. Several type aliases are also provided for common
 /// scenarios.
 ///
 /// The top level item in an invocation of this macro must be a module. This
