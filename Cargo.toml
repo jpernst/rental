@@ -6,3 +6,7 @@ authors = ["Jameson Ernst <jameson@jpernst.com>"]
 description = "A macro to generate self-borrowing structs, plus premade types for convenience."
 repository = "https://github.com/jpernst/rental"
 documentation = "https://docs.rs/rental"
+
+[features]
+default = ["std"]
+std = []
