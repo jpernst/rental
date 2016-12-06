@@ -254,14 +254,6 @@ macro_rules! rental {
 			}
 
 
-			#[allow(dead_code)]
-			pub fn rent_with<'s__, 'o__, F__, R__>(&'s__ self, other: &'o__ $rental<'rental $(, $param)*>, f: F__) -> R__ where
-				F__: for<'a__: 's__, 'b__: 'o__> FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*), &'o__ rental_rebind__!('o__ $($rental_ty)*)) -> R__, R__: 's__
-			{
-				f(self.rental.as_ref().unwrap(), other.rental.as_ref().unwrap())
-			}
-
-
 			/// As [`rent`](#method.rent) but the rental is mutable.
 			#[allow(dead_code)]
 			pub fn rent_mut<'s__, F__, R__>(&'s__ mut self, f: F__) -> R__ where
@@ -322,6 +314,26 @@ macro_rules! rental {
 				use $crate::RentalMut;
 				unsafe { <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::DerefMut>::deref_mut(self.rental_mut()) }
 			}
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*, U__> ::std::convert::AsRef<U__> for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: AsRef<U__>,
+			$($clause)*
+		{
+			fn as_ref(&self) -> &U__ { ::std::convert::AsRef::as_ref(&**self) }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*, U__> ::std::convert::AsMut<U__> for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: AsMut<U__>,
+			$($clause)*
+		{
+			fn as_mut(&mut self) -> &mut U__ { ::std::convert::AsMut::as_mut(&mut **self) }
 		}
 
 
@@ -499,6 +511,16 @@ macro_rules! rental {
 				use $crate::Rental;
 				unsafe { <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::Deref>::deref(self.rental()) }
 			}
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*, U__> ::std::convert::AsRef<U__> for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: AsRef<U__>,
+			$($clause)*
+		{
+			fn as_ref(&self) -> &U__ { ::std::convert::AsRef::as_ref(&**self) }
 		}
 
 
