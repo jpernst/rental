@@ -15,7 +15,10 @@ Such a struct can be declared like this:
 ```rust
 rental!{
     mod rent_lib {
-        pub rental RentSym<'rental, S: ['rental]>(::std::sync::Arc<::libloading::Library>, ::libloading::Symbol<'rental, S>): Deref(S);
+        use std::sync::Arc;
+        use libloading::*;
+
+        pub rental RentSym<'rental, S: ['rental]>(Arc<Library>, Symbol<'rental, S>): Deref(S);
     }
 }
 ```
