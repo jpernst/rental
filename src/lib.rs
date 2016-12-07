@@ -596,7 +596,7 @@ macro_rules! rental {
 
 
 		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::PartialEq for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
 			$rental<'rental $(, $param)*>: ::std::ops::Deref,
 			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: PartialEq,
 			$($clause)*
@@ -607,7 +607,7 @@ macro_rules! rental {
 
 
 		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::Eq for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
 			$rental<'rental $(, $param)*>: ::std::ops::Deref,
 			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: Eq,
 			$($clause)*
@@ -615,7 +615,7 @@ macro_rules! rental {
 
 
 		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::PartialOrd for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
 			$rental<'rental $(, $param)*>: ::std::ops::Deref,
 			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: PartialOrd,
 			$($clause)*
@@ -630,7 +630,7 @@ macro_rules! rental {
 
 
 		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::Ord for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
 			$rental<'rental $(, $param)*>: ::std::ops::Deref,
 			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: Ord,
 			$($clause)*
