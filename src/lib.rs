@@ -165,6 +165,246 @@ macro_rules! rental {
 
 
 	{
+		@ITEM pub rental $rental:ident<'rental $(, $param:tt $(: [$($bounds:tt)*])*)*> (
+			$owner_ty:ty,
+			$($rental_ty:tt)*
+		)$(: Deref($($deref_ty:tt)*))* where [$($clause:tt)*];
+		$($rest:tt)*
+	} => {
+		/// A struct representing a particular (owner, rental) pair.
+		///
+		/// All such structs share a common API, but it is merely a convention
+		/// enforced by the [`rental`](macro.rental.html) macro.  The
+		/// capabilities of a rental struct cannot be fully described as a trait
+		/// without language support for HKT (Higher-Kinded Types). What methods
+		/// can be expressed in a trait are documented in the
+		/// [`Rental`](trait.Rental.html) and
+		/// [`RentalMut`](trait.RentalMut.html) traits.
+		///
+		/// A rental struct can implement `Deref`, but only if the rented type
+		/// is `Deref` and its target does not contain the `'rental` lifetime
+		/// in its signature. 
+		#[deny(lifetime_underscore)]
+		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
+			$owner_ty: $crate::FixedDeref,
+			$($clause)*
+		{
+			owner: Option<$owner_ty>,
+			rental: Option<$($rental_ty)*>,
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$($clause)*
+		{
+			/// Instantiate a new shared rental pair. `owner` is the object
+			/// from which a value will be rented. The closure takes a
+			/// reborrowed shared reference to the owner's `Deref` target, and
+			/// returns the rented value. Within this closure, the special
+			/// `'rental` lifetime is "existential" and cannot be unified with
+			/// any external lifetime. This is crucial in that it prevents any
+			/// borrow of the owner from escaping from the closure other than as
+			/// a return value.
+			#[allow(dead_code)]
+			pub fn new<F__>(owner: $owner_ty, f: F__)
+				-> $rental<'rental $(, $param)*> where
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
+			{
+				$rental{
+					rental: unsafe {
+						Some(::std::mem::transmute(f(&*<$owner_ty as ::std::ops::Deref>::deref(&owner))))
+					},
+					owner: Some(owner),
+				}
+			}
+
+
+			/// As [`new`](#method.new), but the closure returns a `Result`
+			/// with a generic error. In the event of such failure, this method
+			/// will return `Err` with a tuple of the error itself and the
+			/// owner object.
+			#[allow(dead_code)]
+			pub fn try_new<E__, F__>(owner: $owner_ty, f: F__)
+				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
+			{
+				Ok($rental{
+					rental: unsafe {
+						let ptr: *const _ = &*<$owner_ty as ::std::ops::Deref>::deref(&owner);
+						match f(&*ptr) {
+							Ok(asset) => Some(::std::mem::transmute(asset)),
+							Err(err) => return Err((err, owner)),
+						}
+					},
+					owner: Some(owner),
+				})
+			}
+
+
+			/// Borrows the owner.
+			#[allow(dead_code)]
+			pub fn owner(&self) -> &$owner_ty {
+				self.owner.as_ref().unwrap()
+			}
+
+
+			/// Executes a closure on the existentially borrowed rental. The
+			/// closure may return anything, including a borrow, as long as the
+			/// existential `'rental` lifetime does not appear in the type
+			/// signature.
+			#[allow(dead_code)]
+			pub fn rent<'s__, F__, R__>(&'s__ self, f: F__) -> R__ where
+				F__: for<'a__> ::std::ops::FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__,
+				R__: 's__
+			{
+				f(self.rental.as_ref().unwrap())
+			}
+		}
+
+
+		unsafe impl<'rental $(, $param $(: $($bounds)*)*)*> $crate::Rental for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$($clause)*
+		{
+			type Owner = $owner_ty;
+			type Rental = $($rental_ty)*;
+
+
+			#[inline(always)]
+			unsafe fn rental(&self) -> &$($rental_ty)* { self.rental.as_ref().unwrap() }
+			fn from_parts(owner: $owner_ty, rent: $($rental_ty)*) -> Self { $rental{owner: Some(owner), rental: Some(rent)} }
+			unsafe fn into_parts(mut self) -> ($owner_ty, $($rental_ty)*) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
+			fn into_owner(mut self) -> $owner_ty { self.owner.take().unwrap() }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::ops::Deref for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			<$rental<'rental $(, $param)*> as $crate::Rental>::Rental: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)>,
+			$($clause)*
+		{
+			type Target = <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::Deref>::Target;
+
+			#[inline(always)]
+			fn deref(&self) -> &<<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::Deref>::Target {
+				use $crate::Rental;
+				unsafe { <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::Deref>::deref(self.rental()) }
+			}
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::convert::AsRef<rental_deref_ty__!($($($deref_ty)*)*)> for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)>,
+			$($clause)*
+		{
+			fn as_ref(&self) -> &rental_deref_ty__!($($($deref_ty)*)*) { &**self }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::borrow::Borrow<rental_deref_ty__!($($($deref_ty)*)*)> for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)>,
+			$($clause)*
+		{
+			fn borrow(&self) -> &rental_deref_ty__!($($($deref_ty)*)*) { &**self }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::PartialEq for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: PartialEq,
+			$($clause)*
+		{
+			fn eq(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self == **other }
+			fn ne(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self != **other }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::Eq for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: Eq,
+			$($clause)*
+		{ }
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::PartialOrd for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: PartialOrd,
+			$($clause)*
+		{
+			fn partial_cmp(&self, other: &$rental<'rental $(, $param)*>) -> ::std::option::Option<::std::cmp::Ordering> { ::std::cmp::PartialOrd::partial_cmp(&**self, &**other) }
+
+			fn lt(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self < **other }
+			fn le(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self <= **other }
+			fn gt(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self > **other }
+			fn ge(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self >= **other }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::Ord for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: Ord,
+			$($clause)*
+		{
+			fn cmp(&self, other: &$rental<'rental $(, $param)*>) -> ::std::cmp::Ordering { ::std::cmp::Ord::cmp(&**self, &**other) }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::hash::Hash for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::hash::Hash,
+			$($clause)*
+		{
+			fn hash<H>(&self, state: &mut H) where H: ::std::hash::Hasher {
+				self.rent(|b| ::std::hash::Hash::hash(b, state))
+			}
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::fmt::Debug for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Debug,
+			$($clause)*
+		{
+			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+				self.rent(|b| ::std::fmt::Debug::fmt(b, fmt))
+			}
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::fmt::Display for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Display,
+			$($clause)*
+		{
+			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+				self.rent(|b| ::std::fmt::Display::fmt(b, fmt))
+			}
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::ops::Drop for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$($clause)*
+		{
+			fn drop(&mut self) {
+				::std::mem::drop(self.rental.take());
+				::std::mem::drop(self.owner.take());
+			}
+		}
+
+
+		rental!{@ITEM $($rest)*}
+	};
+
+
+	{
 		@ITEM pub rental mut $rental:ident<'rental $(, $param:tt $(: [$($bounds:tt)*])*)*> (
 			$owner_ty:ty,
 			$($rental_ty:tt)*
@@ -209,7 +449,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn new<F__>(mut owner: $owner_ty, f: F__)
 				-> $rental<'rental $(, $param)*> where
-				F__: for<'a__> FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
 			{
 				$rental{
 					rental: unsafe {
@@ -226,8 +466,8 @@ macro_rules! rental {
 			/// owner object.
 			#[allow(dead_code)]
 			pub fn try_new<E__, F__>(mut owner: $owner_ty, f: F__)
-				-> Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'a__> FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> Result<rental_rebind__!('a__ $($rental_ty)*), E__>
+				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
 			{
 				Ok($rental{
 					rental: unsafe {
@@ -248,7 +488,8 @@ macro_rules! rental {
 			/// signature.
 			#[allow(dead_code)]
 			pub fn rent<'s__, F__, R__>(&'s__ self, f: F__) -> R__ where
-				F__: for<'a__: 's__> FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__, R__: 's__
+				F__: for<'a__> ::std::ops::FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__,
+				R__: 's__
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -257,7 +498,8 @@ macro_rules! rental {
 			/// As [`rent`](#method.rent) but the rental is mutable.
 			#[allow(dead_code)]
 			pub fn rent_mut<'s__, F__, R__>(&'s__ mut self, f: F__) -> R__ where
-				F__: for<'a__: 's__> FnOnce(&'s__ mut rental_rebind__!('a__ $($rental_ty)*)) -> R__, R__: 's__
+				F__: for<'a__> ::std::ops::FnOnce(&'s__ mut rental_rebind__!('a__ $($rental_ty)*)) -> R__,
+				R__: 's__
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -317,23 +559,83 @@ macro_rules! rental {
 		}
 
 
-		impl<'rental $(, $param $(: $($bounds)*)*)*, U__> ::std::convert::AsRef<U__> for $rental<'rental $(, $param)*> where
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::convert::AsRef<rental_deref_ty__!($($($deref_ty)*)*)> for $rental<'rental $(, $param)*> where
 			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
-			$rental<'rental $(, $param)*>: ::std::ops::Deref,
-			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: AsRef<U__>,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)>,
 			$($clause)*
 		{
-			fn as_ref(&self) -> &U__ { ::std::convert::AsRef::as_ref(&**self) }
+			fn as_ref(&self) -> &rental_deref_ty__!($($($deref_ty)*)*) { &**self }
 		}
 
 
-		impl<'rental $(, $param $(: $($bounds)*)*)*, U__> ::std::convert::AsMut<U__> for $rental<'rental $(, $param)*> where
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::convert::AsMut<rental_deref_ty__!($($($deref_ty)*)*)> for $rental<'rental $(, $param)*> where
 			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
-			$rental<'rental $(, $param)*>: ::std::ops::Deref,
-			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: AsMut<U__>,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)> + ::std::ops::DerefMut,
 			$($clause)*
 		{
-			fn as_mut(&mut self) -> &mut U__ { ::std::convert::AsMut::as_mut(&mut **self) }
+			fn as_mut(&mut self) -> &mut rental_deref_ty__!($($($deref_ty)*)*) { &mut **self }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::borrow::Borrow<rental_deref_ty__!($($($deref_ty)*)*)> for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)>,
+			$($clause)*
+		{
+			fn borrow(&self) -> &rental_deref_ty__!($($($deref_ty)*)*) { &**self }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::borrow::BorrowMut<rental_deref_ty__!($($($deref_ty)*)*)> for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)> + ::std::ops::DerefMut,
+			$($clause)*
+		{
+			fn borrow_mut(&mut self) -> &mut rental_deref_ty__!($($($deref_ty)*)*) { &mut **self }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::PartialEq for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: PartialEq,
+			$($clause)*
+		{
+			fn eq(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self == **other }
+			fn ne(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self != **other }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::Eq for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: Eq,
+			$($clause)*
+		{ }
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::PartialOrd for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: PartialOrd,
+			$($clause)*
+		{
+			fn partial_cmp(&self, other: &$rental<'rental $(, $param)*>) -> ::std::option::Option<::std::cmp::Ordering> { ::std::cmp::PartialOrd::partial_cmp(&**self, &**other) }
+
+			fn lt(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self < **other }
+			fn le(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self <= **other }
+			fn gt(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self > **other }
+			fn ge(&self, other: &$rental<'rental $(, $param)*>) -> bool { **self >= **other }
+		}
+
+
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::cmp::Ord for $rental<'rental $(, $param)*> where
+			$owner_ty: $crate::FixedDeref,
+			$rental<'rental $(, $param)*>: ::std::ops::Deref,
+			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: Ord,
+			$($clause)*
+		{
+			fn cmp(&self, other: &$rental<'rental $(, $param)*>) -> ::std::cmp::Ordering { ::std::cmp::Ord::cmp(&**self, &**other) }
 		}
 
 
@@ -370,195 +672,8 @@ macro_rules! rental {
 		}
 
 
-		impl<'rental $(, $param $(: $($bounds)*)*)*> Drop for $rental<'rental $(, $param)*> where
+		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::ops::Drop for $rental<'rental $(, $param)*> where
 			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
-			$($clause)*
-		{
-			fn drop(&mut self) {
-				::std::mem::drop(self.rental.take());
-				::std::mem::drop(self.owner.take());
-			}
-		}
-
-
-		rental!{@ITEM $($rest)*}
-	};
-
-
-	{
-		@ITEM pub rental $rental:ident<'rental $(, $param:tt $(: [$($bounds:tt)*])*)*> (
-			$owner_ty:ty,
-			$($rental_ty:tt)*
-		)$(: Deref($($deref_ty:tt)*))* where [$($clause:tt)*];
-		$($rest:tt)*
-	} => {
-		/// A struct representing a particular (owner, rental) pair.
-		///
-		/// All such structs share a common API, but it is merely a convention
-		/// enforced by the [`rental`](macro.rental.html) macro.  The
-		/// capabilities of a rental struct cannot be fully described as a trait
-		/// without language support for HKT (Higher-Kinded Types). What methods
-		/// can be expressed in a trait are documented in the
-		/// [`Rental`](trait.Rental.html) and
-		/// [`RentalMut`](trait.RentalMut.html) traits.
-		///
-		/// A rental struct can implement `Deref`, but only if the rented type
-		/// is `Deref` and its target does not contain the `'rental` lifetime
-		/// in its signature. 
-		#[deny(lifetime_underscore)]
-		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
-			$owner_ty: $crate::FixedDeref,
-			$($clause)*
-		{
-			owner: Option<$owner_ty>,
-			rental: Option<$($rental_ty)*>,
-		}
-
-
-		impl<'rental $(, $param $(: $($bounds)*)*)*> $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
-			$($clause)*
-		{
-			/// Instantiate a new shared rental pair. `owner` is the object
-			/// from which a value will be rented. The closure takes a
-			/// reborrowed shared reference to the owner's `Deref` target, and
-			/// returns the rented value. Within this closure, the special
-			/// `'rental` lifetime is "existential" and cannot be unified with
-			/// any external lifetime. This is crucial in that it prevents any
-			/// borrow of the owner from escaping from the closure other than as
-			/// a return value.
-			#[allow(dead_code)]
-			pub fn new<F__>(owner: $owner_ty, f: F__)
-				-> $rental<'rental $(, $param)*> where
-				F__: for<'a__> FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
-			{
-				$rental{
-					rental: unsafe {
-						Some(::std::mem::transmute(f(&*<$owner_ty as ::std::ops::Deref>::deref(&owner))))
-					},
-					owner: Some(owner),
-				}
-			}
-
-
-			/// As [`new`](#method.new), but the closure returns a `Result`
-			/// with a generic error. In the event of such failure, this method
-			/// will return `Err` with a tuple of the error itself and the
-			/// owner object.
-			#[allow(dead_code)]
-			pub fn try_new<E__, F__>(owner: $owner_ty, f: F__)
-				-> Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'a__> FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> Result<rental_rebind__!('a__ $($rental_ty)*), E__>
-			{
-				Ok($rental{
-					rental: unsafe {
-						let ptr: *const _ = &*<$owner_ty as ::std::ops::Deref>::deref(&owner);
-						match f(&*ptr) {
-							Ok(asset) => Some(::std::mem::transmute(asset)),
-							Err(err) => return Err((err, owner)),
-						}
-					},
-					owner: Some(owner),
-				})
-			}
-
-
-			/// Borrows the owner.
-			#[allow(dead_code)]
-			pub fn owner(&self) -> &$owner_ty {
-				self.owner.as_ref().unwrap()
-			}
-
-
-			/// Executes a closure on the existentially borrowed rental. The
-			/// closure may return anything, including a borrow, as long as the
-			/// existential `'rental` lifetime does not appear in the type
-			/// signature.
-			#[allow(dead_code)]
-			pub fn rent<'s__, F__, R__>(&'s__ self, f: F__) -> R__ where
-				F__: for<'a__: 's__> FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__, R__: 's__
-			{
-				f(self.rental.as_ref().unwrap())
-			}
-		}
-
-
-		unsafe impl<'rental $(, $param $(: $($bounds)*)*)*> $crate::Rental for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
-			$($clause)*
-		{
-			type Owner = $owner_ty;
-			type Rental = $($rental_ty)*;
-
-
-			#[inline(always)]
-			unsafe fn rental(&self) -> &$($rental_ty)* { self.rental.as_ref().unwrap() }
-			fn from_parts(owner: $owner_ty, rent: $($rental_ty)*) -> Self { $rental{owner: Some(owner), rental: Some(rent)} }
-			unsafe fn into_parts(mut self) -> ($owner_ty, $($rental_ty)*) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
-			fn into_owner(mut self) -> $owner_ty { self.owner.take().unwrap() }
-		}
-
-
-		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::ops::Deref for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
-			<$rental<'rental $(, $param)*> as $crate::Rental>::Rental: ::std::ops::Deref<Target=rental_deref_ty__!($($($deref_ty)*)*)>,
-			$($clause)*
-		{
-			type Target = <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::Deref>::Target;
-
-			#[inline(always)]
-			fn deref(&self) -> &<<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::Deref>::Target {
-				use $crate::Rental;
-				unsafe { <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as ::std::ops::Deref>::deref(self.rental()) }
-			}
-		}
-
-
-		impl<'rental $(, $param $(: $($bounds)*)*)*, U__> ::std::convert::AsRef<U__> for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
-			$rental<'rental $(, $param)*>: ::std::ops::Deref,
-			<$rental<'rental $(, $param)*> as ::std::ops::Deref>::Target: AsRef<U__>,
-			$($clause)*
-		{
-			fn as_ref(&self) -> &U__ { ::std::convert::AsRef::as_ref(&**self) }
-		}
-
-
-		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::hash::Hash for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
-			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::hash::Hash,
-			$($clause)*
-		{
-			fn hash<H>(&self, state: &mut H) where H: ::std::hash::Hasher {
-				self.rent(|b| ::std::hash::Hash::hash(b, state))
-			}
-		}
-
-
-		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::fmt::Debug for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
-			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Debug,
-			$($clause)*
-		{
-			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
-				self.rent(|b| ::std::fmt::Debug::fmt(b, fmt))
-			}
-		}
-
-
-		impl<'rental $(, $param $(: $($bounds)*)*)*> ::std::fmt::Display for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
-			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Display,
-			$($clause)*
-		{
-			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
-				self.rent(|b| ::std::fmt::Display::fmt(b, fmt))
-			}
-		}
-
-
-		impl<'rental $(, $param $(: $($bounds)*)*)*> Drop for $rental<'rental $(, $param)*> where
-			$owner_ty: $crate::FixedDeref,
 			$($clause)*
 		{
 			fn drop(&mut self) {
@@ -591,7 +706,7 @@ macro_rules! rental {
 			pub fn map<'rental $(, $param $(: $($bounds)*)*)*, T__, U__, F__>(t: T__, f: F__) -> U__ where
 				T__: $crate::Rental<Rental=$($from_ty)*>,
 				U__: $crate::Rental<Owner=<T__ as $crate::Rental>::Owner, Rental=$($into_ty)*>,
-				F__: for<'f__: 'rental> FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> rental_rebind__!('f__ $($into_ty)*),
+				F__: for<'f__: 'rental> ::std::ops::FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> rental_rebind__!('f__ $($into_ty)*),
 				$($clause)*
 			{
 				unsafe { 
@@ -607,10 +722,10 @@ macro_rules! rental {
 			/// reconstituted and given back to you in the error tuple returned
 			/// by this method.
 			#[allow(dead_code)]
-			pub fn try_map<'rental $(, $param $(: $($bounds)*)*)*, T__, U__, E__, F__>(t: T__, f: F__) -> Result<U__, (E__, T__)> where
+			pub fn try_map<'rental $(, $param $(: $($bounds)*)*)*, T__, U__, E__, F__>(t: T__, f: F__) -> ::std::result::Result<U__, (E__, T__)> where
 				T__: $crate::Rental<Rental=$($from_ty)*>,
 				U__: $crate::Rental<Owner=<T__ as $crate::Rental>::Owner, Rental=$($into_ty)*>,
-				F__: for<'f__: 'rental> FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> Result<rental_rebind__!('f__ $($into_ty)*), (E__, rental_rebind__!('f__ $($from_ty)*))>,
+				F__: for<'f__: 'rental> ::std::ops::FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> ::std::result::Result<rental_rebind__!('f__ $($into_ty)*), (E__, rental_rebind__!('f__ $($from_ty)*))>,
 				$($clause)*
 			{
 				unsafe { 
@@ -963,9 +1078,16 @@ mod test {
 	}
 
 
+	pub struct FooNoDeref<'f, T: 'f> {
+		_val: &'f T,
+		_tag: i32,
+	}
+
+
 	impl<T> Foo<T> {
 		pub fn borrow(&self) -> FooBorrow<T> { FooBorrow{val: &self.val, tag: 1} }
 		pub fn borrow_mut(&mut self) -> FooBorrowMut<T> { FooBorrowMut{val: &mut self.val, tag: 2} }
+		pub fn _borrow_no_deref(&self) -> FooNoDeref<T> { FooNoDeref{_val: &self.val, _tag: 2} }
 	}
 
 
@@ -1040,11 +1162,15 @@ mod test {
 			use super::*;
 
 			pub rental RentFoo<'rental, T: ['rental]> (Box<Foo<T>>, FooBorrow<'rental, T>): Deref(T);
-			pub rental RentFooBox<'rental, T: ['rental]> (Box<Foo<T>>, Box<FooBorrow<'rental, T>>);
 			pub rental mut RentFooMut<'rental, T: ['rental]> (Box<Foo<T>>, FooBorrowMut<'rental, T>): Deref(T);
 
 			pub mapper MapFoo<'rental, T> (FooBorrow<'rental, T>) -> (FooBorrow<'rental, T>) where [T: 'rental];
 			pub mapper MapFooMut<'rental, T> (FooBorrowMut<'rental, T>) -> (FooBorrowMut<'rental, T>) where [T: 'rental];
+
+			pub rental TestFooI32<'rental> (Box<Foo<i32>>, FooBorrow<'rental, i32>): Deref(i32);
+			pub rental TestFooMutI32<'rental> (Box<Foo<i32>>, FooBorrowMut<'rental, i32>): Deref(i32);
+			pub rental TestFooBox<'rental, T: ['rental]> (Box<Foo<T>>, Box<FooBorrow<'rental, T>>);
+			pub rental TestFooNoDeref<'rental, T: ['rental]> (Box<Foo<T>>, FooNoDeref<'rental, T>);
 		}
 	}
 
@@ -1154,5 +1280,32 @@ mod test {
 		let foo_mut = RentFooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
 		println!("{:?}", foo_mut);
 		println!("{}", foo_mut);
+	}
+
+
+	#[test]
+	fn cmp() {
+		let a = RentFoo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+		let b = RentFoo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+
+		assert_eq!(a, b);
+		assert!(a <= b);
+		assert!(a >= b);
+		assert!(!(a < b));
+		assert!(!(a > b));
+	}
+
+
+	#[test]
+	fn borrow() {
+		let foo = RentFoo::new(Box::new(Foo{val: 5}), |f| f.borrow());
+
+		let _: &i32 = ::std::convert::AsRef::as_ref(&foo);
+		let _: &i32 = ::std::borrow::Borrow::borrow(&foo);
+
+		let mut foo_mut = RentFooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
+
+		let _: &mut i32 = ::std::convert::AsMut::as_mut(&mut foo_mut);
+		let _: &mut i32 = ::std::borrow::BorrowMut::borrow_mut(&mut foo_mut);
 	}
 }
