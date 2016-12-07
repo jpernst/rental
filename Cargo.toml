@@ -1,6 +1,6 @@
 [package]
 name = "rental"
-version = "0.2.2"
+version = "0.2.3"
 license = "MIT/Apache-2.0"
 authors = ["Jameson Ernst <jameson@jpernst.com>"]
 description = "A macro to generate self-borrowing structs, plus premade types for convenience."
