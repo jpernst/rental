@@ -30,7 +30,7 @@ For a type to be eligible as an owner, it must also implement the `FixedDeref` t
 To create an instance:
 
 ```rust
-let sym = RentSym::try_new(lib, |lib| unsafe { lib.get::<fn()>(b"my_symbol") })
+let sym = RentSym::try_new(lib, |lib| unsafe { lib.get::<fn()>(b"my_symbol") }).unwrap();
 ```
 
 NOTE: The `unsafe` here is solely because loading a symbol from the dylib is unsafe, unrelated to this library, I promise :)
