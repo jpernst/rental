@@ -189,8 +189,8 @@ macro_rules! rental {
 			$owner_ty: $crate::FixedDeref,
 			$($clause)*
 		{
-			owner: Option<$owner_ty>,
-			rental: Option<$($rental_ty)*>,
+			owner: ::std::option::Option<$owner_ty>,
+			rental: ::std::option::Option<$($rental_ty)*>,
 		}
 
 
@@ -372,7 +372,7 @@ macro_rules! rental {
 			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Debug,
 			$($clause)*
 		{
-			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
 				self.rent(|b| ::std::fmt::Debug::fmt(b, fmt))
 			}
 		}
@@ -383,7 +383,7 @@ macro_rules! rental {
 			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Display,
 			$($clause)*
 		{
-			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
 				self.rent(|b| ::std::fmt::Display::fmt(b, fmt))
 			}
 		}
@@ -429,8 +429,8 @@ macro_rules! rental {
 			$owner_ty: $crate::FixedDeref + ::std::ops::DerefMut,
 			$($clause)*
 		{
-			owner: Option<$owner_ty>,
-			rental: Option<$($rental_ty)*>,
+			owner: ::std::option::Option<$owner_ty>,
+			rental: ::std::option::Option<$($rental_ty)*>,
 		}
 
 
@@ -655,7 +655,7 @@ macro_rules! rental {
 			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Debug,
 			$($clause)*
 		{
-			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
 				self.rent(|b| ::std::fmt::Debug::fmt(b, fmt))
 			}
 		}
@@ -666,7 +666,7 @@ macro_rules! rental {
 			for<'a__> rental_rebind__!('a__ $($rental_ty)*): ::std::fmt::Display,
 			$($clause)*
 		{
-			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+			fn fmt(&self, fmt: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
 				self.rent(|b| ::std::fmt::Display::fmt(b, fmt))
 			}
 		}
