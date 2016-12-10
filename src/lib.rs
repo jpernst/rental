@@ -252,13 +252,22 @@ macro_rules! rental {
 
 
 			/// Executes a closure on the existentially borrowed rental. The
-			/// closure may return anything, including a borrow, as long as the
-			/// existential `'rental` lifetime does not appear in the type
-			/// signature.
+			/// closure may return any value that does not include the `'rental`
+			/// lifetime in its type signature.
 			#[allow(dead_code)]
-			pub fn rent<'s__, F__, R__>(&'s__ self, f: F__) -> R__ where
-				F__: for<'a__> ::std::ops::FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__,
-				R__: 's__
+			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+			{
+				f(self.rental.as_ref().unwrap())
+			}
+
+
+			/// As [`rent`](#method.rent) but the return value of the closure
+			/// is a reference of `'rental` lifetime. This is safe because the
+			/// reference is reborrowed before being returned to you.
+			#[allow(dead_code)]
+			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -384,13 +393,22 @@ macro_rules! rental {
 
 
 			/// Executes a closure on the existentially borrowed rental. The
-			/// closure may return anything, including a borrow, as long as the
-			/// existential `'rental` lifetime does not appear in the type
-			/// signature.
+			/// closure may return any value that does not include the `'rental`
+			/// lifetime in its type signature.
 			#[allow(dead_code)]
-			pub fn rent<'s__, F__, R__>(&'s__ self, f: F__) -> R__ where
-				F__: for<'a__> ::std::ops::FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__,
-				R__: 's__
+			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+			{
+				f(self.rental.as_ref().unwrap())
+			}
+
+
+			/// As [`rent`](#method.rent) but the return value of the closure
+			/// is a reference of `'rental` lifetime. This is safe because the
+			/// reference is reborrowed before being returned to you.
+			#[allow(dead_code)]
+			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -539,13 +557,11 @@ macro_rules! rental {
 
 
 			/// Executes a closure on the existentially borrowed rental. The
-			/// closure may return anything, including a borrow, as long as the
-			/// existential `'rental` lifetime does not appear in the type
-			/// signature.
+			/// closure may return any value that does not include the `'rental`
+			/// lifetime in its type signature.
 			#[allow(dead_code)]
-			pub fn rent<'s__, F__, R__>(&'s__ self, f: F__) -> R__ where
-				F__: for<'a__> ::std::ops::FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__,
-				R__: 's__
+			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -553,9 +569,29 @@ macro_rules! rental {
 
 			/// As [`rent`](#method.rent) but the rental is mutable.
 			#[allow(dead_code)]
-			pub fn rent_mut<'s__, F__, R__>(&'s__ mut self, f: F__) -> R__ where
-				F__: for<'a__> ::std::ops::FnOnce(&'s__ mut rental_rebind__!('a__ $($rental_ty)*)) -> R__,
-				R__: 's__
+			pub fn rent_mut<F__, R__>(&mut self, f: F__) -> R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+			{
+				f(self.rental.as_mut().unwrap())
+			}
+
+
+			/// As [`rent`](#method.rent) but the return value of the closure
+			/// is a reference of `'rental` lifetime. This is safe because the
+			/// reference is reborrowed before being returned to you.
+			#[allow(dead_code)]
+			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
+			{
+				f(self.rental.as_ref().unwrap())
+			}
+
+
+			/// As [`rent_ref`](#method.rent_ref) but the returned reference is
+			/// mutable.
+			#[allow(dead_code)]
+			pub fn rent_mut_ref<F__, R__>(&mut self, f: F__) -> &mut R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ mut R__,
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -683,13 +719,11 @@ macro_rules! rental {
 
 
 			/// Executes a closure on the existentially borrowed rental. The
-			/// closure may return anything, including a borrow, as long as the
-			/// existential `'rental` lifetime does not appear in the type
-			/// signature.
+			/// closure may return any value that does not include the `'rental`
+			/// lifetime in its type signature.
 			#[allow(dead_code)]
-			pub fn rent<'s__, F__, R__>(&'s__ self, f: F__) -> R__ where
-				F__: for<'a__> ::std::ops::FnOnce(&'s__ rental_rebind__!('a__ $($rental_ty)*)) -> R__,
-				R__: 's__
+			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -697,9 +731,29 @@ macro_rules! rental {
 
 			/// As [`rent`](#method.rent) but the rental is mutable.
 			#[allow(dead_code)]
-			pub fn rent_mut<'s__, F__, R__>(&'s__ mut self, f: F__) -> R__ where
-				F__: for<'a__> ::std::ops::FnOnce(&'s__ mut rental_rebind__!('a__ $($rental_ty)*)) -> R__,
-				R__: 's__
+			pub fn rent_mut<F__, R__>(&mut self, f: F__) -> R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+			{
+				f(self.rental.as_mut().unwrap())
+			}
+
+
+			/// As [`rent`](#method.rent) but the return value of the closure
+			/// is a reference of `'rental` lifetime. This is safe because the
+			/// reference is reborrowed before being returned to you.
+			#[allow(dead_code)]
+			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
+			{
+				f(self.rental.as_ref().unwrap())
+			}
+
+
+			/// As [`rent_ref`](#method.rent_ref) but the returned reference is
+			/// mutable.
+			#[allow(dead_code)]
+			pub fn rent_mut_ref<F__, R__>(&mut self, f: F__) -> &mut R__ where
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ mut R__,
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -1191,19 +1245,17 @@ mod test {
 
 	pub struct FooBorrow<'f, T: 'f> {
 		val: &'f T,
-		tag: i32,
 	}
 
 
 	pub struct FooBorrowMut<'f, T: 'f> {
 		val: &'f mut T,
-		tag: i32,
 	}
 
 
 	impl<T> Foo<T> {
-		pub fn borrow(&self) -> FooBorrow<T> { FooBorrow{val: &self.val, tag: 1} }
-		pub fn borrow_mut(&mut self) -> FooBorrowMut<T> { FooBorrowMut{val: &mut self.val, tag: 2} }
+		pub fn borrow(&self) -> FooBorrow<T> { FooBorrow{val: &self.val} }
+		pub fn borrow_mut(&mut self) -> FooBorrowMut<T> { FooBorrowMut{val: &mut self.val} }
 	}
 
 
@@ -1222,7 +1274,7 @@ mod test {
 
 	impl<'f, T> Clone for FooBorrow<'f, T> {
 		fn clone(&self) -> FooBorrow<'f, T> {
-			FooBorrow{val: self.val, tag: self.tag}
+			FooBorrow{val: self.val}
 		}
 	}
 
@@ -1321,17 +1373,17 @@ mod test {
 
 
 	#[test]
-	fn rent_borrow() {
+	fn rent_ref() {
 		let foo = RentFoo::new(Box::new(Foo{val: 5}), |f| f.borrow());
-		let ft = foo.rent(|fb| &fb.tag);
-		assert_eq!(*ft, 1);
+		let ft = foo.rent_ref(|fb| fb.val);
+		assert_eq!(*ft, 5);
 	}
 
 
 	#[test]
-	fn rent_borrow_mut() {
+	fn rent_mut_ref() {
 		let mut foo = RentFooMut::new(Box::new(Foo{val: 5}), |f| f.borrow_mut());
-		let ft = foo.rent_mut(|fbm| &mut fbm.tag);
+		let ft = foo.rent_mut_ref(|fbm| fbm.val);
 		*ft = 3;
 		assert_eq!(*ft, 3);
 	}
