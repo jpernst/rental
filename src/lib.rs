@@ -211,10 +211,11 @@ macro_rules! rental {
 				-> $rental<'rental $(, $param)*> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
 					rental: unsafe {
-						Some(::std::mem::transmute(f(&*<$owner_ty as ::std::ops::Deref>::deref(&owner))))
+						let ptr: *const _ = <$owner_ty as ::std::ops::Deref>::deref(&owner);
+						Some(f(&*ptr))
 					},
 					owner: Some(owner),
 				}
@@ -230,12 +231,12 @@ macro_rules! rental {
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
 					rental: unsafe {
-						let ptr: *const _ = &*<$owner_ty as ::std::ops::Deref>::deref(&owner);
+						let ptr: *const _ = <$owner_ty as ::std::ops::Deref>::deref(&owner);
 						match f(&*ptr) {
-							Ok(asset) => Some(::std::mem::transmute(asset)),
+							Ok(asset) => Some(asset),
 							Err(err) => return Err((err, owner)),
 						}
 					},
@@ -352,10 +353,11 @@ macro_rules! rental {
 				-> $rental<'rental $(, $param)*> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
 					rental: unsafe {
-						Some(::std::mem::transmute(f(&*<$owner_ty as ::std::ops::Deref>::deref(&owner))))
+						let ptr: *const _ = <$owner_ty as ::std::ops::Deref>::deref(&owner);
+						Some(f(&*ptr))
 					},
 					owner: Some(owner),
 				}
@@ -371,12 +373,12 @@ macro_rules! rental {
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
 					rental: unsafe {
-						let ptr: *const _ = &*<$owner_ty as ::std::ops::Deref>::deref(&owner);
+						let ptr: *const _ = <$owner_ty as ::std::ops::Deref>::deref(&owner);
 						match f(&*ptr) {
-							Ok(asset) => Some(::std::mem::transmute(asset)),
+							Ok(asset) => Some(asset),
 							Err(err) => return Err((err, owner)),
 						}
 					},
@@ -523,10 +525,11 @@ macro_rules! rental {
 				-> $rental<'rental $(, $param)*> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
 					rental: unsafe {
-						Some(::std::mem::transmute(f(&mut *<$owner_ty as ::std::ops::DerefMut>::deref_mut(&mut owner))))
+						let ptr: *mut _ = <$owner_ty as ::std::ops::DerefMut>::deref_mut(&mut owner);
+						Some(f(&mut *ptr))
 					},
 					owner: Some(owner),
 				}
@@ -542,12 +545,12 @@ macro_rules! rental {
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
 					rental: unsafe {
 						let ptr: *mut _ = &mut *<$owner_ty as ::std::ops::DerefMut>::deref_mut(&mut owner);
 						match f(&mut *ptr) {
-							Ok(asset) => Some(::std::mem::transmute(asset)),
+							Ok(asset) => Some(asset),
 							Err(err) => return Err((err, owner)),
 						}
 					},
@@ -685,10 +688,11 @@ macro_rules! rental {
 				-> $rental<'rental $(, $param)*> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
 					rental: unsafe {
-						Some(::std::mem::transmute(f(&mut *<$owner_ty as ::std::ops::DerefMut>::deref_mut(&mut owner))))
+						let ptr: *mut _ = &mut *<$owner_ty as ::std::ops::DerefMut>::deref_mut(&mut owner);
+						Some(f(&mut *ptr))
 					},
 					owner: Some(owner),
 				}
@@ -704,12 +708,12 @@ macro_rules! rental {
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
 				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
 			{
-				$crate::static_assert_fixed_deref__(&owner);
+				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
 					rental: unsafe {
 						let ptr: *mut _ = &mut *<$owner_ty as ::std::ops::DerefMut>::deref_mut(&mut owner);
 						match f(&mut *ptr) {
-							Ok(asset) => Some(::std::mem::transmute(asset)),
+							Ok(asset) => Some(asset),
 							Err(err) => return Err((err, owner)),
 						}
 					},
@@ -1004,7 +1008,7 @@ use std::{cell, rc, sync};
 #[doc(hidden)]
 #[allow(dead_code)]
 #[inline(always)]
-pub fn static_assert_fixed_deref__<O: FixedDeref>(_: &O) { }
+pub fn static_assert_fixed_deref__<O: FixedDeref>() { }
 
 
 /// This trait indicates both that the type can be dereferenced, and that when
@@ -1328,6 +1332,7 @@ mod test {
 	rental!{
 		mod test {
 			use super::*;
+			use std::cell::{RefCell, Ref};
 
 			pub rental RentFoo<'rental, T: ['rental]> (Box<Foo<T>>, FooBorrow<'rental, T>): Deref(T);
 			pub rental mut RentFooMut<'rental, T: ['rental]> (Box<Foo<T>>, FooBorrowMut<'rental, T>): Deref(T);
@@ -1339,6 +1344,8 @@ mod test {
 			pub rental TestFooMutI32<'rental> (Box<Foo<i32>>, FooBorrowMut<'rental, i32>): Deref(i32);
 			pub rental TestFooBox<'rental, T: ['rental]> (Box<Foo<T>>, Box<FooBorrow<'rental, T>>);
 			pub rental mut TestFooMutBox<'rental, T: ['rental]> (Box<Foo<T>>, Box<FooBorrowMut<'rental, T>>);
+
+			pub rental TestRefCell<'rental, T: ['rental]> (Box<RefCell<T>>, Box<Ref<'rental, T>>);
 		}
 	}
 
