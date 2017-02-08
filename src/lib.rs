@@ -209,7 +209,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn new<F__>(owner: $owner_ty, f: F__)
 				-> $rental<'rental $(, $param)*> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__; $($rental_ty)*)
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
@@ -229,7 +229,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn try_new<E__, F__>(owner: $owner_ty, f: F__)
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__; $($rental_ty)*), E__>
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
@@ -257,7 +257,7 @@ macro_rules! rental {
 			/// lifetime in its type signature.
 			#[allow(dead_code)]
 			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -268,7 +268,7 @@ macro_rules! rental {
 			/// reference is reborrowed before being returned to you.
 			#[allow(dead_code)]
 			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> &'a__ R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -351,7 +351,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn new<F__>(owner: $owner_ty, f: F__)
 				-> $rental<'rental $(, $param)*> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__; $($rental_ty)*)
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
@@ -371,7 +371,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn try_new<E__, F__>(owner: $owner_ty, f: F__)
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__; $($rental_ty)*), E__>
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
@@ -399,7 +399,7 @@ macro_rules! rental {
 			/// lifetime in its type signature.
 			#[allow(dead_code)]
 			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -410,7 +410,7 @@ macro_rules! rental {
 			/// reference is reborrowed before being returned to you.
 			#[allow(dead_code)]
 			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> &'a__ R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -523,7 +523,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn new<F__>(mut owner: $owner_ty, f: F__)
 				-> $rental<'rental $(, $param)*> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__; $($rental_ty)*)
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
@@ -543,7 +543,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn try_new<E__, F__>(mut owner: $owner_ty, f: F__)
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__; $($rental_ty)*), E__>
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
@@ -564,7 +564,7 @@ macro_rules! rental {
 			/// lifetime in its type signature.
 			#[allow(dead_code)]
 			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -573,7 +573,7 @@ macro_rules! rental {
 			/// As [`rent`](#method.rent) but the rental is mutable.
 			#[allow(dead_code)]
 			pub fn rent_mut<F__, R__>(&mut self, f: F__) -> R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__; $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -584,7 +584,7 @@ macro_rules! rental {
 			/// reference is reborrowed before being returned to you.
 			#[allow(dead_code)]
 			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> &'a__ R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -594,7 +594,7 @@ macro_rules! rental {
 			/// mutable.
 			#[allow(dead_code)]
 			pub fn rent_mut_ref<F__, R__>(&mut self, f: F__) -> &mut R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ mut R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__; $($rental_ty)*)) -> &'a__ mut R__,
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -686,7 +686,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn new<F__>(mut owner: $owner_ty, f: F__)
 				-> $rental<'rental $(, $param)*> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__ $($rental_ty)*)
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> rental_rebind__!('a__; $($rental_ty)*)
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				$rental{
@@ -706,7 +706,7 @@ macro_rules! rental {
 			#[allow(dead_code)]
 			pub fn try_new<E__, F__>(mut owner: $owner_ty, f: F__)
 				-> ::std::result::Result<$rental<'rental $(, $param)*>, (E__, $owner_ty)> where
-				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__ $($rental_ty)*), E__>
+				F__: for<'a__> ::std::ops::FnOnce(&'a__ mut <$owner_ty as ::std::ops::Deref>::Target) -> ::std::result::Result<rental_rebind__!('a__; $($rental_ty)*), E__>
 			{
 				$crate::static_assert_fixed_deref__::<$owner_ty>();
 				Ok($rental{
@@ -727,7 +727,7 @@ macro_rules! rental {
 			/// lifetime in its type signature.
 			#[allow(dead_code)]
 			pub fn rent<F__, R__>(&self, f: F__) -> R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -736,7 +736,7 @@ macro_rules! rental {
 			/// As [`rent`](#method.rent) but the rental is mutable.
 			#[allow(dead_code)]
 			pub fn rent_mut<F__, R__>(&mut self, f: F__) -> R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__; $($rental_ty)*)) -> R__,
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -747,7 +747,7 @@ macro_rules! rental {
 			/// reference is reborrowed before being returned to you.
 			#[allow(dead_code)]
 			pub fn rent_ref<F__, R__>(&self, f: F__) -> &R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ rental_rebind__!('r__; $($rental_ty)*)) -> &'a__ R__,
 			{
 				f(self.rental.as_ref().unwrap())
 			}
@@ -757,7 +757,7 @@ macro_rules! rental {
 			/// mutable.
 			#[allow(dead_code)]
 			pub fn rent_mut_ref<F__, R__>(&mut self, f: F__) -> &mut R__ where
-				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__ $($rental_ty)*)) -> &'a__ mut R__,
+				F__: for<'a__, 'r__> ::std::ops::FnOnce(&'a__ mut rental_rebind__!('r__; $($rental_ty)*)) -> &'a__ mut R__,
 			{
 				f(self.rental.as_mut().unwrap())
 			}
@@ -881,7 +881,7 @@ macro_rules! rental {
 			pub fn map<'rental $(, $param $(: $($bounds)*)*)*, T__, U__, F__>(t: T__, f: F__) -> U__ where
 				T__: $crate::Rental<Rental=$($from_ty)*>,
 				U__: $crate::Rental<Owner=<T__ as $crate::Rental>::Owner, Rental=$($into_ty)*>,
-				F__: for<'f__: 'rental> ::std::ops::FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> rental_rebind__!('f__ $($into_ty)*),
+				F__: for<'f__> ::std::ops::FnOnce(rental_rebind__!('f__; $($from_ty)*)) -> rental_rebind__!('f__; $($into_ty)*),
 				$($clause)*
 			{
 				unsafe { 
@@ -900,7 +900,7 @@ macro_rules! rental {
 			pub fn try_map<'rental $(, $param $(: $($bounds)*)*)*, T__, U__, E__, F__>(t: T__, f: F__) -> ::std::result::Result<U__, (E__, T__)> where
 				T__: $crate::Rental<Rental=$($from_ty)*>,
 				U__: $crate::Rental<Owner=<T__ as $crate::Rental>::Owner, Rental=$($into_ty)*>,
-				F__: for<'f__: 'rental> ::std::ops::FnOnce(rental_rebind__!('f__ $($from_ty)*)) -> ::std::result::Result<rental_rebind__!('f__ $($into_ty)*), (E__, rental_rebind__!('f__ $($from_ty)*))>,
+				F__: for<'f__> ::std::ops::FnOnce(rental_rebind__!('f__; $($from_ty)*)) -> ::std::result::Result<rental_rebind__!('f__; $($into_ty)*), (E__, rental_rebind__!('f__; $($from_ty)*))>,
 				$($clause)*
 			{
 				unsafe { 
@@ -941,54 +941,54 @@ macro_rules! rental {
 #[macro_export]
 macro_rules! rental_rebind__ {
 	(
-		$into:tt {$($head:tt)*} 'rental $($tail:tt)*
+		$into:tt; {$($head:tt)*} 'rental $($tail:tt)*
 	) => {
-		rental_rebind__!($into {$($head)* $into} $($tail)*)
+		rental_rebind__!($into; {$($head)* $into} $($tail)*)
 	};
 	(
-		$into:tt {$($head:tt)*} ($($inner:tt)*) $($tail:tt)*
+		$into:tt; {$($head:tt)*} ($($inner:tt)*) $($tail:tt)*
 	) => {
-		rental_rebind__!($into {($($head)*)} $($inner)* @> $($tail)*)
+		rental_rebind__!($into; {($($head)*)} $($inner)* @> $($tail)*)
 	};
 	(
-		$into:tt {$($head:tt)*} [$($inner:tt)*] $($tail:tt)*
+		$into:tt; {$($head:tt)*} [$($inner:tt)*] $($tail:tt)*
 	) => {
-		rental_rebind__!($into {[$($head)*]} $($inner)* @> $($tail)*)
+		rental_rebind__!($into; {[$($head)*]} $($inner)* @> $($tail)*)
 	};
 	(
-		$into:tt {$($head:tt)*} {$($inner:tt)*} $($tail:tt)*
+		$into:tt; {$($head:tt)*} {$($inner:tt)*} $($tail:tt)*
 	) => {
-		rental_rebind__!($into {{$($head)*}} $($inner)* @> $($tail)*)
+		rental_rebind__!($into; {{$($head)*}} $($inner)* @> $($tail)*)
 	};
 	(
-		$into:tt {($($head:tt)*) $($inner:tt)*} @> $($tail:tt)*
+		$into:tt; {($($head:tt)*) $($inner:tt)*} @> $($tail:tt)*
 	) => {
-		rental_rebind__!($into {$($head)*($($inner)*)} $($tail)*)
+		rental_rebind__!($into; {$($head)*($($inner)*)} $($tail)*)
 	};
 	(
-		$into:tt {[$($head:tt)*] $($inner:tt)*} @> $($tail:tt)*
+		$into:tt; {[$($head:tt)*] $($inner:tt)*} @> $($tail:tt)*
 	) => {
-		rental_rebind__!($into {$($head)*[$($inner)*]} $($tail)*)
+		rental_rebind__!($into; {$($head)*[$($inner)*]} $($tail)*)
 	};
 	(
-		$into:tt {{$($head:tt)*} $($inner:tt)*} @> $($tail:tt)*
+		$into:tt; {{$($head:tt)*} $($inner:tt)*} @> $($tail:tt)*
 	) => {
-		rental_rebind__!($into {$($head)*{$($inner)*}} $($tail)*)
+		rental_rebind__!($into; {$($head)*{$($inner)*}} $($tail)*)
 	};
 	(
-		$into:tt {$($head:tt)*} $tok:tt $($tail:tt)*
+		$into:tt; {$($head:tt)*} $tok:tt $($tail:tt)*
 	) => {
-		rental_rebind__!($into {$($head)* $tok} $($tail)*)
+		rental_rebind__!($into; {$($head)* $tok} $($tail)*)
 	};
 	(
-		$into:tt {$($rebound:tt)*}
+		$into:tt; {$($rebound:tt)*}
 	) => {
 		$($rebound)*
 	};
 	(
-		$into:tt $($tail:tt)*
+		$into:tt; $($tail:tt)*
 	) => {
-		rental_rebind__!($into {} $($tail)*)
+		rental_rebind__!($into; {} $($tail)*)
 	};
 }
 
@@ -997,7 +997,7 @@ macro_rules! rental_rebind__ {
 #[macro_export]
 macro_rules! rental_deref_ty__ {
 	( ) => { $crate::NoDeref };
-	( $($deref_ty:tt)+ ) => { rental_rebind__!('_ $($deref_ty)+) };
+	( $($deref_ty:tt)+ ) => { rental_rebind__!('_; $($deref_ty)+) };
 }
 
 
