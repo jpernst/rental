@@ -11,4 +11,7 @@ documentation = "https://docs.rs/rental"
 
 [features]
 default = ["std"]
-std = []
+std = ["stable_deref_trait/std"]
+
+[dependencies]
+stable_deref_trait = { version = "1.0.0", default-features = false}
