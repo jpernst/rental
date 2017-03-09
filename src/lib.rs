@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-
 //! A macro to generate self-borrowing structs, plus a few predefined type
 //! aliases for convenience.
 //!
@@ -29,7 +28,7 @@
 //! [`RentRef`](struct.RentRef.html) and [`RentMut`](struct.RentMut.html), as
 //! well as the related type aliases for common rental scenarios. The
 //! documentation for the [`rental`](macro.rental.html) macro describes the
-//! kinds of items that can be generated. 
+//! kinds of items that can be generated.
 
 #[cfg(feature = "std")]
 extern crate core;
@@ -41,7 +40,11 @@ pub mod c {
 }
 
 
-/// This macro is the bedrock of the API. It allows you to define three 
+extern crate stable_deref_trait;
+pub use stable_deref_trait::StableDeref as FixedDeref;
+
+
+/// This macro is the bedrock of the API. It allows you to define three
 /// different kinds of items related to renting.
 ///
 /// NOTE: This macro is only necessary to use if you want to define new rental
@@ -61,7 +64,7 @@ pub mod c {
 /// Both forms are tuple-structs that contain an (owner, borrow) pair. Both
 /// have a similar API, with minor differences pointed out below. They are
 /// declared as follows:
-/// 
+///
 /// ```rust,ignore
 /// // Shared
 /// pub rental $rental:ident<'rental $(, $param:tt $(: [$($bounds:tt)*])*)*> (
@@ -195,7 +198,7 @@ macro_rules! rental {
 		///
 		/// A rental struct can implement `Deref`, but only if the rented type
 		/// is `Deref` and its target does not contain the `'rental` lifetime
-		/// in its signature. 
+		/// in its signature.
 		#[deny(lifetime_underscore)]
 		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
 			'static: 'rental,
@@ -337,7 +340,7 @@ macro_rules! rental {
 		///
 		/// A rental struct can implement `Deref`, but only if the rented type
 		/// is `Deref` and its target does not contain the `'rental` lifetime
-		/// in its signature. 
+		/// in its signature.
 		#[deny(lifetime_underscore)]
 		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
 			'static: 'rental,
@@ -509,7 +512,7 @@ macro_rules! rental {
 		///
 		/// A rental struct can implement `Deref` and `DerefMut`, but only if
 		/// the rented type is `Deref`/`DerefMut` and its target does not
-		/// contain the `'rental` lifetime in its signature. 
+		/// contain the `'rental` lifetime in its signature.
 		#[deny(lifetime_underscore)]
 		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
 			'static: 'rental,
@@ -672,7 +675,7 @@ macro_rules! rental {
 		///
 		/// A rental struct can implement `Deref` and `DerefMut`, but only if
 		/// the rented type is `Deref`/`DerefMut` and its target does not
-		/// contain the `'rental` lifetime in its signature. 
+		/// contain the `'rental` lifetime in its signature.
 		#[deny(lifetime_underscore)]
 		pub struct $rental<'rental $(, $param $(: $($bounds)*)*)*> where
 			'static: 'rental,
@@ -896,7 +899,7 @@ macro_rules! rental {
 				F__: for<'f__> $crate::c::ops::FnOnce(rental_rebind__!('f__; $($from_ty)*)) -> rental_rebind__!('f__; $($into_ty)*),
 				$($clause)*
 			{
-				unsafe { 
+				unsafe {
 					let (o, r) = t.into_parts();
 					U__::from_parts(o, f(r))
 				}
@@ -915,7 +918,7 @@ macro_rules! rental {
 				F__: for<'f__> $crate::c::ops::FnOnce(rental_rebind__!('f__; $($from_ty)*)) -> $crate::c::result::Result<rental_rebind__!('f__; $($into_ty)*), (E__, rental_rebind__!('f__; $($from_ty)*))>,
 				$($clause)*
 			{
-				unsafe { 
+				unsafe {
 					let (o, r) = t.into_parts();
 					match f(r) {
 						Ok(r) => Ok(U__::from_parts(o, r)),
@@ -1013,51 +1016,14 @@ macro_rules! rental_deref_ty__ {
 }
 
 
-use ::c::ops::Deref;
 #[cfg(feature = "std")]
-use ::std::{cell, rc, sync};
+use ::std::{cell, sync};
 
 
 #[doc(hidden)]
 #[allow(dead_code)]
 #[inline(always)]
 pub fn static_assert_fixed_deref__<O: FixedDeref>() { }
-
-
-/// This trait indicates both that the type can be dereferenced, and that when
-/// it is, the target has a fixed memory address while it is held by a rental
-/// struct.
-///
-/// This trait is already implemented for common standard types that
-/// fulfill these requirements. It must be implemented for a type to be eligible
-/// as an owner in a rental struct.
-pub unsafe trait FixedDeref: Deref { }
-
-unsafe impl<'t, T: ?Sized> FixedDeref for &'t T { }
-unsafe impl<'t, T: ?Sized> FixedDeref for &'t mut T { }
-
-#[cfg(feature = "std")]
-unsafe impl<T: ?Sized> FixedDeref for Box<T> { }
-#[cfg(feature = "std")]
-unsafe impl<T> FixedDeref for Vec<T> { }
-#[cfg(feature = "std")]
-unsafe impl FixedDeref for String { }
-
-#[cfg(feature = "std")]
-unsafe impl<T: ?Sized> FixedDeref for rc::Rc<T> { }
-#[cfg(feature = "std")]
-unsafe impl<T: ?Sized> FixedDeref for sync::Arc<T> { }
-
-#[cfg(feature = "std")]
-unsafe impl<'t, T: ?Sized> FixedDeref for cell::Ref<'t, T> { }
-#[cfg(feature = "std")]
-unsafe impl<'t, T: ?Sized> FixedDeref for cell::RefMut<'t, T> { }
-#[cfg(feature = "std")]
-unsafe impl<'t, T: ?Sized> FixedDeref for sync::MutexGuard<'t, T> { }
-#[cfg(feature = "std")]
-unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockReadGuard<'t, T> { }
-#[cfg(feature = "std")]
-unsafe impl<'t, T: ?Sized> FixedDeref for sync::RwLockWriteGuard<'t, T> { }
 
 
 /// This trait is implemented for all rental structs.
