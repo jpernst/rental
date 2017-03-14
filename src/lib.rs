@@ -298,7 +298,7 @@ macro_rules! rental {
 			type Rental = $($rental_ty)*;
 
 
-			#[inline(always)]
+			#[inline]
 			unsafe fn rental(&self) -> &$($rental_ty)* { self.rental.as_ref().unwrap() }
 			fn from_parts(owner: $owner_ty, rent: $($rental_ty)*) -> Self { $rental{owner: Some(owner), rental: Some(rent)} }
 			unsafe fn into_parts(mut self) -> ($owner_ty, $($rental_ty)*) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
@@ -440,7 +440,7 @@ macro_rules! rental {
 			type Rental = $($rental_ty)*;
 
 
-			#[inline(always)]
+			#[inline]
 			unsafe fn rental(&self) -> &$($rental_ty)* { self.rental.as_ref().unwrap() }
 			fn from_parts(owner: $owner_ty, rent: $($rental_ty)*) -> Self { $rental{owner: Some(owner), rental: Some(rent)} }
 			unsafe fn into_parts(mut self) -> ($owner_ty, $($rental_ty)*) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
@@ -454,7 +454,7 @@ macro_rules! rental {
 		{
 			type Target = rental_deref_ty__!($($deref_ty)*);
 
-			#[inline(always)]
+			#[inline]
 			fn deref(&self) -> &rental_deref_ty__!($($deref_ty)*) {
 				use $crate::Rental;
 				unsafe { &**self.rental() }
@@ -624,7 +624,7 @@ macro_rules! rental {
 			type Rental = $($rental_ty)*;
 
 
-			#[inline(always)]
+			#[inline]
 			unsafe fn rental(&self) -> &$($rental_ty)* { self.rental.as_ref().unwrap() }
 			fn from_parts(owner: $owner_ty, rent: $($rental_ty)*) -> Self { $rental{owner: Some(owner), rental: Some(rent)} }
 			unsafe fn into_parts(mut self) -> ($owner_ty, $($rental_ty)*) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
@@ -636,7 +636,7 @@ macro_rules! rental {
 			'static: 'rental,
 			$($clause)*
 		{
-			#[inline(always)]
+			#[inline]
 			unsafe fn rental_mut(&mut self) -> &mut <Self as $crate::Rental>::Rental { self.rental.as_mut().unwrap() }
 		}
 
@@ -787,7 +787,7 @@ macro_rules! rental {
 			type Rental = $($rental_ty)*;
 
 
-			#[inline(always)]
+			#[inline]
 			unsafe fn rental(&self) -> &$($rental_ty)* { self.rental.as_ref().unwrap() }
 			fn from_parts(owner: $owner_ty, rent: $($rental_ty)*) -> Self { $rental{owner: Some(owner), rental: Some(rent)} }
 			unsafe fn into_parts(mut self) -> ($owner_ty, $($rental_ty)*) { (self.owner.take().unwrap(), self.rental.take().unwrap()) }
@@ -799,7 +799,7 @@ macro_rules! rental {
 			'static: 'rental,
 			$($clause)*
 		{
-			#[inline(always)]
+			#[inline]
 			unsafe fn rental_mut(&mut self) -> &mut <Self as $crate::Rental>::Rental { self.rental.as_mut().unwrap() }
 		}
 
@@ -810,7 +810,7 @@ macro_rules! rental {
 		{
 			type Target = rental_deref_ty__!($($deref_ty)*);
 
-			#[inline(always)]
+			#[inline]
 			fn deref(&self) -> &rental_deref_ty__!($($deref_ty)*) {
 				use $crate::Rental;
 				unsafe { &**self.rental() }
@@ -822,7 +822,7 @@ macro_rules! rental {
 			'static: 'rental,
 			$($clause)*
 		{
-			#[inline(always)]
+			#[inline]
 			fn deref_mut(&mut self) -> &mut <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as $crate::c::ops::Deref>::Target {
 				use $crate::RentalMut;
 				unsafe { <<$rental<'rental $(, $param)*> as $crate::Rental>::Rental as $crate::c::ops::DerefMut>::deref_mut(self.rental_mut()) }
