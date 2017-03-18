@@ -1,4 +1,5 @@
 /target
+/rental-impl/target
 /.cargo
 Cargo.lock
 
