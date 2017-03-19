@@ -1,6 +1,6 @@
 [package]
 name = "rental-impl"
-version = "0.0.1"
+version = "0.1.0"
 license = "MIT/Apache-2.0"
 authors = ["Jameson Ernst <jameson@jpernst.com>"]
 description = "An implementation detail of rental. Should not be used directly."

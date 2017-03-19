@@ -42,6 +42,6 @@ macro_rules! rental {
 
 rental!{
 	mod rental_mod {
-		struct Foo;
+		pub struct Foo;
 	}
 }
