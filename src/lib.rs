@@ -20,7 +20,7 @@ macro_rules! rental {
 		$(#[$attr])*
 		mod $rental_mod {
 			rental__invoke_proc_macro!{
-				rental__define_struct!($($body)*)
+				rental__impl!($($body)*)
 			}
 		}
 	};
@@ -33,7 +33,7 @@ macro_rules! rental {
 		$(#[$attr])*
 		pub mod $rental_mod {
 			rental__invoke_proc_macro!{
-				rental__define_struct!($($body)*)
+				rental__impl!($($body)*)
 			}
 		}
 	};
@@ -42,6 +42,9 @@ macro_rules! rental {
 
 rental!{
 	mod rental_mod {
-		pub struct Foo;
+		#[rental]
+		pub struct Foo(
+			i32
+		);
 	}
 }
