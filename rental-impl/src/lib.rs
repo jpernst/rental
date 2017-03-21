@@ -31,42 +31,102 @@ define_proc_macros! {
 
 
 fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Item) {
-	let mut rstruct = item.clone();
+	let (data, gen) = if let syn::ItemKind::Struct(ref data, ref gen) = item.node {
+		(data, gen)
+	} else {
+		panic!("Item is not a struct.");
+	};
 
-	if let Some(rattr_pos) = item.attrs.iter().position(|a| if let syn::MetaItem::Word(ref ident) = a.value { ident == "rental" } else { false }) {
-		rstruct.attrs.remove(rattr_pos);
+	let mut rattrs = item.attrs.clone();
+	if let Some(rattr_pos) = rattrs.iter().position(|a| if let syn::MetaItem::Word(ref ident) = a.value { ident == "rental" } else { false }) {
+		rattrs.remove(rattr_pos);
 	} else {
 		panic!("Struct must have `rental` attribute");
 	}
 
-	if let syn::ItemKind::Struct(ref mut data, ref gen) = rstruct.node {
-		let mut fields = match *data {
-			syn::VariantData::Struct(ref mut fields) => panic!("Only tuple structs are currently supported."),
-			syn::VariantData::Tuple(ref mut fields) => fields,
-			_ => panic!("Struct must have fields."),
+	let (is_tup, fields) = match *data {
+		syn::VariantData::Struct(ref fields) => (false, fields),
+		syn::VariantData::Tuple(ref fields) => (true, fields),
+		_ => panic!("Struct must have fields."),
+	};
+
+	let mut rfields = Vec::with_capacity(fields.len());
+	for (i, f) in fields.iter().enumerate() {
+		if f.vis != syn::Visibility::Inherited {
+			panic!("Fields must be private.");
+		}
+
+		let mut rlt_args = Vec::new();
+		let rty = {
+			let mut eraser = RentalLifetimeEraser{
+				rfields: &rfields,
+				rlt_args: &mut rlt_args,
+			};
+
+			syn::fold::noop_fold_ty(&mut eraser, f.ty.clone())
 		};
 
-		let mut rfields = Vec::with_capacity(fields.len());
-		for (idx, mut field) in fields.iter_mut().enumerate() {
-			if field.vis != syn::Visibility::Inherited {
-				panic!("Fields must be private.");
-			}
-
-			let mut rlt_params = Vec::new();
-
-			rfields.push(RentalField{idx: idx, rlt_params: rlt_params});
-		}
-	} else {
-		panic!("Item is not a struct.");
+		rfields.push(RentalField{
+			field: syn::Field{
+				ident: f.ident.clone(),
+				vis: f.vis.clone(),
+				attrs: f.attrs.clone(),
+				ty: rty,
+			},
+			nested_lts: 0,
+			rlt_args: rlt_args,
+		});
 	}
 
-	rstruct.to_tokens(tokens);
+	let rstruct = syn::Item{
+		ident: item.ident.clone(),
+		vis: item.vis.clone(),
+		attrs: rattrs,
+		node: syn::ItemKind::Struct(
+			if is_tup {
+				syn::VariantData::Tuple(rfields.iter().map(|rf| rf.field.clone()).collect())
+			} else {
+				syn::VariantData::Struct(rfields.iter().map(|rf| rf.field.clone()).collect())
+			},
+			gen.clone()
+		),
+	};
 
-
+	rstruct.to_tokens(&mut tokens);
 }
 
 
 struct RentalField {
-	idx: usize,
-	rlt_params: Vec<String>,
+	pub field: syn::Field,
+	pub nested_lts: usize,
+	pub rlt_args: Vec<RentalLifetimeArg>,
+}
+
+
+struct RentalLifetimeArg {
+	pub field_idx: usize,
+	pub nested_idx: Option<usize>,
+}
+
+
+struct RentalLifetimeEraser<'a, 'b> {
+	pub rfields: &'a [RentalField],
+	pub rlt_args: &'b mut Vec<RentalLifetimeArg>,
+}
+
+
+impl<'a, 'b> syn::fold::Folder for RentalLifetimeEraser<'a, 'b> {
+	fn fold_lifetime(&mut self, lifetime: syn::Lifetime) -> syn::Lifetime {
+		if let Some(idx) = self.rfields.iter().enumerate().position(|(i, rf)| {
+			if let Some(ref ident) = rf.field.ident {
+				lifetime.ident == ident
+			} else {
+				lifetime.ident == syn::Ident::new(format!("'_{}", i))
+			}
+		}) {
+			syn::Lifetime::new("'static")
+		} else {
+			lifetime
+		}
+	}
 }

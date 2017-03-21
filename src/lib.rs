@@ -44,7 +44,7 @@ rental!{
 	mod rental_mod {
 		#[rental]
 		pub struct Foo(
-			i32
+			&'static i32,
 		);
 	}
 }
