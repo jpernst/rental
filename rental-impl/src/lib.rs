@@ -4,6 +4,7 @@ extern crate procedural_masquerade;
 extern crate syn;
 extern crate quote;
 
+use std::collections::HashSet;
 use quote::ToTokens;
 
 
@@ -38,11 +39,15 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	};
 
 	let mut rattrs = item.attrs.clone();
-	if let Some(rattr_pos) = rattrs.iter().position(|a| if let syn::MetaItem::Word(ref ident) = a.value { ident == "rental" } else { false }) {
-		rattrs.remove(rattr_pos);
+	let is_mut = if let Some(rental_pos) = rattrs.iter().position(|a| if let syn::MetaItem::Word(ref ident) = a.value { ident == "rental" } else { false }) {
+		rattrs.remove(rental_pos);
+		false
+	} else if let Some(rental_mut_pos) = rattrs.iter().position(|a| if let syn::MetaItem::Word(ref ident) = a.value { ident == "rental_mut" } else { false }) {
+		rattrs.remove(rental_mut_pos);
+		true
 	} else {
-		panic!("Struct must have `rental` attribute");
-	}
+		panic!("Struct must have `rental` or `rental_mut` attribute");
+	};
 
 	let (is_tup, fields) = match *data {
 		syn::VariantData::Struct(ref fields) => (false, fields),
@@ -51,29 +56,54 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	};
 
 	let mut rfields = Vec::with_capacity(fields.len());
-	for (i, f) in fields.iter().enumerate() {
-		if f.vis != syn::Visibility::Inherited {
+	for (field_idx, field) in fields.iter().enumerate() {
+		if field.vis != syn::Visibility::Inherited {
 			panic!("Fields must be private.");
 		}
 
-		let mut rlt_args = Vec::new();
+		let mut rfattrs = field.attrs.clone();
+		let mut subrental_len = None;
+		if let Some(subrental_pos) = rfattrs.iter().position(|a| match a.value {
+			syn::MetaItem::Word(ref ident) => {
+				if ident == "subrental" {
+					panic!("`subrental` attribute must have a single integer argument.");
+				}
+
+				false
+			},
+			syn::MetaItem::List(ref ident, ref nested) => {
+				if ident == "subrental" {
+					if let (Some(&syn::NestedMetaItem::Literal(syn::Lit::Int(sr_len, ..))), None) = (nested.get(0), nested.get(1)) {
+						subrental_len = Some(sr_len as usize);
+						true
+					} else {
+						panic!("`subrental` attribute must have a single integer argument.");
+					}
+				} else { false }
+			}
+			_ => false,
+		}) {
+			rfattrs.remove(subrental_pos);
+		}
+
+		let mut rlt_args = HashSet::new();
 		let rty = {
 			let mut eraser = RentalLifetimeEraser{
 				rfields: &rfields,
 				rlt_args: &mut rlt_args,
 			};
 
-			syn::fold::noop_fold_ty(&mut eraser, f.ty.clone())
+			syn::fold::noop_fold_ty(&mut eraser, field.ty.clone())
 		};
 
 		rfields.push(RentalField{
 			field: syn::Field{
-				ident: f.ident.clone(),
-				vis: f.vis.clone(),
-				attrs: f.attrs.clone(),
+				ident: field.ident.clone(),
+				vis: field.vis.clone(),
+				attrs: rfattrs,
 				ty: rty,
 			},
-			nested_lts: 0,
+			subrental_len: subrental_len,
 			rlt_args: rlt_args,
 		});
 	}
@@ -98,32 +128,58 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 
 struct RentalField {
 	pub field: syn::Field,
-	pub nested_lts: usize,
-	pub rlt_args: Vec<RentalLifetimeArg>,
-}
-
-
-struct RentalLifetimeArg {
-	pub field_idx: usize,
-	pub nested_idx: Option<usize>,
+	pub subrental_len: Option<usize>,
+	pub rlt_args: HashSet<syn::Lifetime>,
 }
 
 
 struct RentalLifetimeEraser<'a, 'b> {
 	pub rfields: &'a [RentalField],
-	pub rlt_args: &'b mut Vec<RentalLifetimeArg>,
+	pub rlt_args: &'b mut HashSet<syn::Lifetime>,
 }
 
 
 impl<'a, 'b> syn::fold::Folder for RentalLifetimeEraser<'a, 'b> {
 	fn fold_lifetime(&mut self, lifetime: syn::Lifetime) -> syn::Lifetime {
-		if let Some(idx) = self.rfields.iter().enumerate().position(|(i, rf)| {
-			if let Some(ref ident) = rf.field.ident {
-				lifetime.ident == ident
+		let mut rlt_arg = None;
+		'find_rlt_arg: for (field_idx, rfield) in self.rfields.iter().enumerate() {
+			if let Some(ref field_ident) = rfield.field.ident {
+				if let Some(subrental_len) = rfield.subrental_len {
+					for subrental_idx in 0 .. subrental_len {
+						let rlt = syn::Lifetime::new(format!("'{}_{}", field_ident, subrental_idx));
+						if lifetime.ident == rlt.ident {
+							rlt_arg = Some(rlt);
+							break 'find_rlt_arg;
+						}
+					}
+				} else {
+					let rlt = syn::Lifetime::new(format!("'{}", field_ident));
+					if lifetime.ident == rlt.ident {
+						rlt_arg = Some(rlt);
+						break 'find_rlt_arg;
+					}
+				}
 			} else {
-				lifetime.ident == syn::Ident::new(format!("'_{}", i))
+				if let Some(subrental_len) = rfield.subrental_len {
+					for subrental_idx in 0 .. subrental_len {
+						let rlt = syn::Lifetime::new(format!("'_{}_{}", field_idx, subrental_idx));
+						if lifetime.ident == rlt.ident {
+							rlt_arg = Some(rlt);
+							break 'find_rlt_arg;
+						}
+					}
+				} else {
+					let rlt = syn::Lifetime::new(format!("'_{}", field_idx));
+					if lifetime.ident == rlt.ident {
+						rlt_arg = Some(rlt);
+						break 'find_rlt_arg;
+					}
+				}
 			}
-		}) {
+		}
+
+		if let Some(rlt_arg) = rlt_arg {
+			self.rlt_args.insert(rlt_arg);
 			syn::Lifetime::new("'static")
 		} else {
 			lifetime

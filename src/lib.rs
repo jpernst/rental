@@ -37,14 +37,28 @@ macro_rules! rental {
 			}
 		}
 	};
+	{
+		$(#[$attr:meta])*
+		pub($($vis:tt)*) mod $rental_mod:ident {
+			$($body:tt)*
+		}
+	} => {
+		$(#[$attr])*
+		pub($($vis)*) mod $rental_mod {
+			rental__invoke_proc_macro!{
+				rental__impl!($($body)*)
+			}
+		}
+	};
 }
 
 
 rental!{
 	mod rental_mod {
 		#[rental]
-		pub struct Foo(
-			&'static i32,
-		);
+		pub struct Foo{
+			#[subrental(2)]
+			foo: &'static i32,
+		}
 	}
 }
