@@ -2,6 +2,7 @@ extern crate proc_macro;
 #[macro_use]
 extern crate procedural_masquerade;
 extern crate syn;
+#[macro_use]
 extern crate quote;
 
 use std::collections::HashSet;
@@ -35,7 +36,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let (data, gen) = if let syn::ItemKind::Struct(ref data, ref gen) = item.node {
 		(data, gen)
 	} else {
-		panic!("Item is not a struct.");
+		panic!("Item `{}` is not a struct.", item.ident);
 	};
 
 	let mut rattrs = item.attrs.clone();
@@ -46,27 +47,40 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		rattrs.remove(rental_mut_pos);
 		true
 	} else {
-		panic!("Struct must have `rental` or `rental_mut` attribute");
+		panic!("Struct `{}` must have `rental` or `rental_mut` attribute.", item.ident);
 	};
+
+	if !is_mut && item.ident.as_ref().ends_with("_Borrows") {
+		panic!("Immutable rental struct `{}` name must not end with `_Borrows`.", item.ident);
+	}
 
 	let (is_tup, fields) = match *data {
 		syn::VariantData::Struct(ref fields) => (false, fields),
 		syn::VariantData::Tuple(ref fields) => (true, fields),
-		_ => panic!("Struct must have fields."),
+		_ => panic!("Struct `{}` must have fields.", item.ident),
 	};
 
 	let mut rfields = Vec::with_capacity(fields.len());
 	for (field_idx, field) in fields.iter().enumerate() {
 		if field.vis != syn::Visibility::Inherited {
-			panic!("Fields must be private.");
+			panic!(
+				"Struct `{}` field `{}` must be private.",
+				item.ident,
+				field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+			);
 		}
 
 		let mut rfattrs = field.attrs.clone();
+		let mut rlt_args = HashSet::new();
 		let mut subrental_len = None;
 		if let Some(subrental_pos) = rfattrs.iter().position(|a| match a.value {
 			syn::MetaItem::Word(ref ident) => {
 				if ident == "subrental" {
-					panic!("`subrental` attribute must have a single integer argument.");
+					panic!(
+						"`subrental` attribute on struct `{}` field `{}` must have a single integer argument.",
+						item.ident,
+						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+					);
 				}
 
 				false
@@ -77,7 +91,11 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 						subrental_len = Some(sr_len as usize);
 						true
 					} else {
-						panic!("`subrental` attribute must have a single integer argument.");
+						panic!(
+							"`subrental` attribute on struct `{}` field `{}` must have a single integer argument.",
+							item.ident,
+							field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+						);
 					}
 				} else { false }
 			}
@@ -86,11 +104,27 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			rfattrs.remove(subrental_pos);
 		}
 
-		let mut rlt_args = HashSet::new();
+		if let Some(subrental_len) = subrental_len {
+			if let Some(ref field_ident) = field.ident {
+				for subrental_idx in 0 .. subrental_len {
+					rlt_args.insert(syn::Lifetime::new(format!("'{}_{}", field_ident, subrental_idx)));
+				}
+			} else {
+				for subrental_idx in 0 .. subrental_len {
+					rlt_args.insert(syn::Lifetime::new(format!("'_{}_{}", field_idx, subrental_idx)));
+				}
+			}
+		} else {
+			if let Some(ref field_ident) = field.ident {
+				rlt_args.insert(syn::Lifetime::new(format!("'{}", field_ident)));
+			} else {
+				rlt_args.insert(syn::Lifetime::new(format!("'_{}", field_idx)));
+			}
+		}
+
 		let rty = {
 			let mut eraser = RentalLifetimeEraser{
 				rfields: &rfields,
-				rlt_args: &mut rlt_args,
 			};
 
 			syn::fold::noop_fold_ty(&mut eraser, field.ty.clone())
@@ -108,6 +142,11 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		});
 	}
 
+	let rlt_args = rfields.iter().fold(HashSet::new(), |mut rlt_args, rfield| { rlt_args.extend(rfield.rlt_args.iter().map(|lt| lt.clone())); rlt_args });
+	if let Some(collide) = rlt_args.iter().find(|rlt_arg| gen.lifetimes.iter().any(|lt_def| lt_def.lifetime == **rlt_arg)) {
+		panic!("Struct `{}` lifetime parameter `{}` collides with rental lifetime.", item.ident, collide.ident);
+	}
+
 	let rstruct = syn::Item{
 		ident: item.ident.clone(),
 		vis: item.vis.clone(),
@@ -122,7 +161,36 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		),
 	};
 
-	rstruct.to_tokens(&mut tokens);
+	rstruct.to_tokens(tokens);
+
+	let item_ident = &item.ident;
+	let item_vis = &item.vis;
+	if !is_mut {
+		let borrows_ident = syn::Ident::new(item_ident.to_string() + "_Borrows");
+		let borrow_tys = fields.iter().map(|field| &field.ty);
+
+		if is_tup {
+			(quote!{
+				#item_vis struct #borrows_ident(
+					//#(& #borrow_tys),*
+				);
+			}).to_tokens(tokens);
+		} else {
+			let field_names = fields.iter().map(|field| field.ident.as_ref().unwrap());
+
+			(quote!{
+				#item_vis struct #borrows_ident {
+					//#(#field_names: & #borrow_tys),*
+				}
+			}).to_tokens(tokens);
+		}
+
+		(quote!{
+			impl #item_ident {
+			}
+		}).to_tokens(tokens);
+	} else {
+	}
 }
 
 
@@ -133,53 +201,14 @@ struct RentalField {
 }
 
 
-struct RentalLifetimeEraser<'a, 'b> {
+struct RentalLifetimeEraser<'a> {
 	pub rfields: &'a [RentalField],
-	pub rlt_args: &'b mut HashSet<syn::Lifetime>,
 }
 
 
-impl<'a, 'b> syn::fold::Folder for RentalLifetimeEraser<'a, 'b> {
+impl<'a> syn::fold::Folder for RentalLifetimeEraser<'a> {
 	fn fold_lifetime(&mut self, lifetime: syn::Lifetime) -> syn::Lifetime {
-		let mut rlt_arg = None;
-		'find_rlt_arg: for (field_idx, rfield) in self.rfields.iter().enumerate() {
-			if let Some(ref field_ident) = rfield.field.ident {
-				if let Some(subrental_len) = rfield.subrental_len {
-					for subrental_idx in 0 .. subrental_len {
-						let rlt = syn::Lifetime::new(format!("'{}_{}", field_ident, subrental_idx));
-						if lifetime.ident == rlt.ident {
-							rlt_arg = Some(rlt);
-							break 'find_rlt_arg;
-						}
-					}
-				} else {
-					let rlt = syn::Lifetime::new(format!("'{}", field_ident));
-					if lifetime.ident == rlt.ident {
-						rlt_arg = Some(rlt);
-						break 'find_rlt_arg;
-					}
-				}
-			} else {
-				if let Some(subrental_len) = rfield.subrental_len {
-					for subrental_idx in 0 .. subrental_len {
-						let rlt = syn::Lifetime::new(format!("'_{}_{}", field_idx, subrental_idx));
-						if lifetime.ident == rlt.ident {
-							rlt_arg = Some(rlt);
-							break 'find_rlt_arg;
-						}
-					}
-				} else {
-					let rlt = syn::Lifetime::new(format!("'_{}", field_idx));
-					if lifetime.ident == rlt.ident {
-						rlt_arg = Some(rlt);
-						break 'find_rlt_arg;
-					}
-				}
-			}
-		}
-
-		if let Some(rlt_arg) = rlt_arg {
-			self.rlt_args.insert(rlt_arg);
+		if self.rfields.iter().any(|rfield| rfield.rlt_args.contains(&lifetime)) {
 			syn::Lifetime::new("'static")
 		} else {
 			lifetime

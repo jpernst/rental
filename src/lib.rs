@@ -56,9 +56,9 @@ macro_rules! rental {
 rental!{
 	mod rental_mod {
 		#[rental]
-		pub struct Foo{
-			#[subrental(2)]
-			foo: &'static i32,
+		pub struct Foo {
+			a: A,
+			b: B<'a>,
 		}
 	}
 }
