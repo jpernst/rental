@@ -40,18 +40,50 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	};
 
 	let mut rattrs = item.attrs.clone();
-	let is_mut = if let Some(rental_pos) = rattrs.iter().position(|a| if let syn::MetaItem::Word(ref ident) = a.value { ident == "rental" } else { false }) {
-		rattrs.remove(rental_pos);
-		false
-	} else if let Some(rental_mut_pos) = rattrs.iter().position(|a| if let syn::MetaItem::Word(ref ident) = a.value { ident == "rental_mut" } else { false }) {
-		rattrs.remove(rental_mut_pos);
-		true
-	} else {
-		panic!("Struct `{}` must have `rental` or `rental_mut` attribute.", item.ident);
-	};
+	let mut is_mut = false;
+	let mut borrows_ident = syn::Ident::new(item.ident.to_string() + "_Borrows");
+	if let Some(rental_pos) = rattrs.iter().filter(|attr| !attr.is_sugared_doc).position(|attr| match attr.value {
+		syn::MetaItem::Word(ref attr_ident) => {
+			is_mut = match attr_ident.as_ref() {
+				"rental" => false,
+				"rental_mut" => true,
+				_ => return false,
+			};
 
-	if !is_mut && item.ident.as_ref().ends_with("_Borrows") {
-		panic!("Immutable rental struct `{}` name must not end with `_Borrows`.", item.ident);
+			true
+		},
+		syn::MetaItem::List(ref attr_ident, ref nested) => {
+			is_mut = match attr_ident.as_ref() {
+				"rental" => false,
+				"rental_mut" => true,
+				_ => return false,
+			};
+
+			match (nested.get(0), nested.get(1)) {
+				(
+					Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref borrows_str_name, syn::Lit::Str(ref borrows_str, ..)))),
+					None
+				) if borrows_str_name == "borrows" => {
+					borrows_ident = syn::Ident::new(borrows_str.to_string());
+				},
+				_ => panic!(
+					"`{}` attribute on struct `{}` expects `borrows = \"ident\"`.",
+					if !is_mut { "rental" } else { "rental_mut" },
+					item.ident
+				),
+			}
+
+			true
+		},
+		_ => false,
+	}) {
+		rattrs.remove(rental_pos);
+	} else {
+		panic!("Struct `{}` must have a `rental` or `rental_mut` attribute.", item.ident);
+	}
+
+	if rattrs.iter().any(|attr| !attr.is_sugared_doc) {
+		panic!("Struct `{}` must not have attributes other than `rental` or `rental_mut`.", item.ident);
 	}
 
 	let (is_tup, fields) = match *data {
@@ -71,46 +103,77 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		}
 
 		let mut rfattrs = field.attrs.clone();
-		let mut rlt_args = HashSet::new();
-		let mut subrental_len = None;
+		let mut subrental = None;
 		if let Some(subrental_pos) = rfattrs.iter().position(|a| match a.value {
 			syn::MetaItem::Word(ref ident) => {
 				if ident == "subrental" {
 					panic!(
-						"`subrental` attribute on struct `{}` field `{}` must have a single integer argument.",
+						"`subrental` attribute on struct `{}` field `{}` expects `arity = int` and optionally `borrows = \"ty\"`.",
 						item.ident,
 						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 					);
-				}
-
-				false
+				} else { false }
 			},
-			syn::MetaItem::List(ref ident, ref nested) => {
-				if ident == "subrental" {
-					if let (Some(&syn::NestedMetaItem::Literal(syn::Lit::Int(sr_len, ..))), None) = (nested.get(0), nested.get(1)) {
-						subrental_len = Some(sr_len as usize);
-						true
-					} else {
-						panic!(
-							"`subrental` attribute on struct `{}` field `{}` must have a single integer argument.",
+			syn::MetaItem::List(ref attr_ident, ref nested) => {
+				if attr_ident == "subrental" {
+					match (nested.get(0), nested.get(1), nested.get(2)) {
+						(
+							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_arity_name, syn::Lit::Int(sr_arity, ..)))),
+							None,
+							None
+						) if sr_arity_name == "arity" => {
+							subrental = Some((sr_arity as usize, None));
+							true
+						},
+						(
+							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_arity_name, syn::Lit::Int(sr_arity, ..)))),
+							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_borrows_name, syn::Lit::Str(ref sr_borrows, ..)))),
+							None
+						) | (
+							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_borrows_name, syn::Lit::Str(ref sr_borrows, ..)))),
+							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_arity_name, syn::Lit::Int(sr_arity, ..)))),
+							None
+						) if sr_arity_name == "arity" && sr_borrows_name == "borrows" => {
+							if let Ok(sr_borrows) = syn::parse_path(sr_borrows) {
+								subrental = Some((sr_arity as usize, Some(sr_borrows)));
+								true
+							} else {
+								panic!(
+									"`borrows` value of `subrental` attribute on struct `{}` field `{}` must be a type path.",
+									item.ident,
+									field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+								);
+							}
+						},
+						_ => panic!(
+							"`subrental` attribute on struct `{}` field `{}` expects `arity = int` and optionally `borrows = \"ty\"`.",
 							item.ident,
 							field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
-						);
+						),
 					}
 				} else { false }
-			}
+			},
 			_ => false,
 		}) {
 			rfattrs.remove(subrental_pos);
 		}
 
-		if let Some(subrental_len) = subrental_len {
+		if rfattrs.iter().any(|attr| !attr.is_sugared_doc) {
+			panic!(
+				"Struct `{}` field `{}` must not have attributes other than `subrental`.",
+				item.ident,
+				field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+			);
+		}
+
+		let mut rlt_args = HashSet::new();
+		if let Some((subrental_arity, ..)) = subrental {
 			if let Some(ref field_ident) = field.ident {
-				for subrental_idx in 0 .. subrental_len {
+				for subrental_idx in 0 .. subrental_arity {
 					rlt_args.insert(syn::Lifetime::new(format!("'{}_{}", field_ident, subrental_idx)));
 				}
 			} else {
-				for subrental_idx in 0 .. subrental_len {
+				for subrental_idx in 0 .. subrental_arity {
 					rlt_args.insert(syn::Lifetime::new(format!("'_{}_{}", field_idx, subrental_idx)));
 				}
 			}
@@ -137,7 +200,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				attrs: rfattrs,
 				ty: rty,
 			},
-			subrental_len: subrental_len,
+			subrental: subrental,
 			rlt_args: rlt_args,
 		});
 	}
@@ -152,10 +215,14 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		vis: item.vis.clone(),
 		attrs: rattrs,
 		node: syn::ItemKind::Struct(
-			if is_tup {
-				syn::VariantData::Tuple(rfields.iter().map(|rf| rf.field.clone()).collect())
-			} else {
-				syn::VariantData::Struct(rfields.iter().map(|rf| rf.field.clone()).collect())
+			{
+				let mut reverse_rfields: Vec<_> = rfields.iter().map(|rf| rf.field.clone()).collect();
+				reverse_rfields.reverse();
+				if is_tup {
+					syn::VariantData::Tuple(reverse_rfields)
+				} else {
+					syn::VariantData::Struct(reverse_rfields)
+				}
 			},
 			gen.clone()
 		),
@@ -166,8 +233,8 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let item_ident = &item.ident;
 	let item_vis = &item.vis;
 	if !is_mut {
-		let borrows_ident = syn::Ident::new(item_ident.to_string() + "_Borrows");
-		let borrow_tys = fields.iter().map(|field| &field.ty);
+		let borrow_tys = rfields.iter().map(|rfield| {
+		});
 
 		if is_tup {
 			(quote!{
@@ -196,7 +263,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 
 struct RentalField {
 	pub field: syn::Field,
-	pub subrental_len: Option<usize>,
+	pub subrental: Option<(usize, Option<syn::Path>)>,
 	pub rlt_args: HashSet<syn::Lifetime>,
 }
 
