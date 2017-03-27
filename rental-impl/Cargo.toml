@@ -11,6 +11,6 @@ documentation = "https://docs.rs/rental"
 proc-macro = true
 
 [dependencies]
-procedural-masquerade = "0.1.1"
+procedural-masquerade = "=0.1.1"
 quote = "0.3.15"
 syn = { version = "0.11.9", features = ["full", "fold"] }

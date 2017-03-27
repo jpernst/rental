@@ -1,12 +1,17 @@
-#[macro_use]
-extern crate procedural_masquerade;
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "std")]
+extern crate core;
 #[macro_use]
 extern crate rental_impl;
 
 pub use rental_impl::*;
 
 
-define_invoke_proc_macro!(rental__invoke_proc_macro);
+#[doc(hidden)]
+pub mod __rental_prelude {
+	pub use core;
+}
 
 
 #[macro_export]
@@ -19,8 +24,12 @@ macro_rules! rental {
 	} => {
 		$(#[$attr])*
 		mod $rental_mod {
-			rental__invoke_proc_macro!{
-				rental__impl!($($body)*)
+			use $crate::__rental_prelude;
+
+			#[derive(__rental_impl)]
+			#[allow(unused)]
+			enum ProceduralMasqueradeDummyType {
+				Input = (0, stringify!($($body)*)).0
 			}
 		}
 	};
@@ -32,8 +41,12 @@ macro_rules! rental {
 	} => {
 		$(#[$attr])*
 		pub mod $rental_mod {
-			rental__invoke_proc_macro!{
-				rental__impl!($($body)*)
+			use $crate::__rental_prelude;
+
+			#[derive(__rental_impl)]
+			#[allow(unused)]
+			enum ProceduralMasqueradeDummyType {
+				Input = (0, stringify!($($body)*)).0
 			}
 		}
 	};
@@ -45,16 +58,27 @@ macro_rules! rental {
 	} => {
 		$(#[$attr])*
 		pub($($vis)*) mod $rental_mod {
-			rental__invoke_proc_macro!{
-				rental__impl!($($body)*)
+			use $crate::__rental_prelude;
+
+			#[derive(__rental_impl)]
+			#[allow(unused)]
+			enum ProceduralMasqueradeDummyType {
+				Input = (0, stringify!($($body)*)).0
 			}
 		}
 	};
 }
 
 
+struct A { }
+struct B<'a> {
+	a: &'a A,
+}
+
 rental!{
 	mod rental_mod {
+		use super::{A, B};
+
 		#[rental]
 		pub struct Foo {
 			a: A,

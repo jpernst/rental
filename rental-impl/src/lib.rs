@@ -1,3 +1,5 @@
+#![recursion_limit = "128"]
+
 extern crate proc_macro;
 #[macro_use]
 extern crate procedural_masquerade;
@@ -5,14 +7,13 @@ extern crate syn;
 #[macro_use]
 extern crate quote;
 
-use std::collections::HashSet;
 use quote::ToTokens;
 
 
 define_proc_macros! {
 	#[doc(hidden)]
 	#[allow(non_snake_case)]
-	pub fn rental__impl(input: &str) -> String {
+	pub fn __rental_impl(input: &str) -> String {
 		let mut tokens = quote::Tokens::new();
 
 		for item in syn::parse_items(input).expect("Failed to parse items in module body.") {
@@ -33,18 +34,17 @@ define_proc_macros! {
 
 
 fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Item) {
-	let (data, gen) = if let syn::ItemKind::Struct(ref data, ref gen) = item.node {
-		(data, gen)
+	let (struct_data, struct_generics) = if let syn::ItemKind::Struct(ref struct_data, ref struct_generics) = item.node {
+		(struct_data, struct_generics)
 	} else {
 		panic!("Item `{}` is not a struct.", item.ident);
 	};
 
 	let mut rattrs = item.attrs.clone();
-	let mut is_mut = false;
-	let mut borrows_ident = syn::Ident::new(item.ident.to_string() + "_Borrows");
+	let mut is_rental_mut = false;
 	if let Some(rental_pos) = rattrs.iter().filter(|attr| !attr.is_sugared_doc).position(|attr| match attr.value {
 		syn::MetaItem::Word(ref attr_ident) => {
-			is_mut = match attr_ident.as_ref() {
+			is_rental_mut = match attr_ident.as_ref() {
 				"rental" => false,
 				"rental_mut" => true,
 				_ => return false,
@@ -53,24 +53,18 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			true
 		},
 		syn::MetaItem::List(ref attr_ident, ref nested) => {
-			is_mut = match attr_ident.as_ref() {
+			is_rental_mut = match attr_ident.as_ref() {
 				"rental" => false,
 				"rental_mut" => true,
 				_ => return false,
 			};
 
-			match (nested.get(0), nested.get(1)) {
-				(
-					Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref borrows_str_name, syn::Lit::Str(ref borrows_str, ..)))),
-					None
-				) if borrows_str_name == "borrows" => {
-					borrows_ident = syn::Ident::new(borrows_str.to_string());
-				},
-				_ => panic!(
-					"`{}` attribute on struct `{}` expects `borrows = \"ident\"`.",
-					if !is_mut { "rental" } else { "rental_mut" },
+			if nested.get(0).is_some() {
+				panic!(
+					"`{}` attribute on struct `{}` must have no arguments.",
+					if !is_rental_mut { "rental" } else { "rental_mut" },
 					item.ident
-				),
+				);
 			}
 
 			true
@@ -86,11 +80,15 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		panic!("Struct `{}` must not have attributes other than `rental` or `rental_mut`.", item.ident);
 	}
 
-	let (is_tup, fields) = match *data {
+	let (is_tup, fields) = match *struct_data {
 		syn::VariantData::Struct(ref fields) => (false, fields),
 		syn::VariantData::Tuple(ref fields) => (true, fields),
-		_ => panic!("Struct `{}` must have fields.", item.ident),
+		_ => panic!("Struct `{}` must have at least 2 fields.", item.ident),
 	};
+
+	if fields.len() < 2 {
+		panic!("Struct `{}` must have at least 2 fields.", item.ident);
+	}
 
 	let mut rfields = Vec::with_capacity(fields.len());
 	for (field_idx, field) in fields.iter().enumerate() {
@@ -104,11 +102,11 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 
 		let mut rfattrs = field.attrs.clone();
 		let mut subrental = None;
-		if let Some(subrental_pos) = rfattrs.iter().position(|a| match a.value {
+		if let Some(sr_pos) = rfattrs.iter().position(|a| match a.value {
 			syn::MetaItem::Word(ref ident) => {
 				if ident == "subrental" {
 					panic!(
-						"`subrental` attribute on struct `{}` field `{}` expects `arity = int` and optionally `borrows = \"ty\"`.",
+						"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
 						item.ident,
 						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 					);
@@ -116,46 +114,44 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			},
 			syn::MetaItem::List(ref attr_ident, ref nested) => {
 				if attr_ident == "subrental" {
-					match (nested.get(0), nested.get(1), nested.get(2)) {
+					match (nested.get(0), nested.get(1)) {
 						(
 							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_arity_name, syn::Lit::Int(sr_arity, ..)))),
-							None,
 							None
 						) if sr_arity_name == "arity" => {
-							subrental = Some((sr_arity as usize, None));
-							true
-						},
-						(
-							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_arity_name, syn::Lit::Int(sr_arity, ..)))),
-							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_borrows_name, syn::Lit::Str(ref sr_borrows, ..)))),
-							None
-						) | (
-							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_borrows_name, syn::Lit::Str(ref sr_borrows, ..)))),
-							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_arity_name, syn::Lit::Int(sr_arity, ..)))),
-							None
-						) if sr_arity_name == "arity" && sr_borrows_name == "borrows" => {
-							if let Ok(sr_borrows) = syn::parse_path(sr_borrows) {
-								subrental = Some((sr_arity as usize, Some(sr_borrows)));
-								true
+							if let syn::Ty::Path(ref qself, ref sr_borrow) = field.ty {
+								let last_idx = sr_borrow.segments.len() - 1;
+
+								let mut sr_borrow = sr_borrow.clone();
+								sr_borrow.segments[last_idx].ident = syn::Ident::new(sr_borrow.segments[0].ident.to_string() + "_Borrow");
+								sr_borrow.segments[last_idx].parameters = syn::PathParameters::none();
+
+								let mut sr_borrow_mut = sr_borrow.clone();
+								sr_borrow_mut.segments[last_idx].ident = syn::Ident::new(sr_borrow.segments[0].ident.to_string() + "_BorrowMut");
+								sr_borrow_mut.segments[last_idx].parameters = syn::PathParameters::none();
+
+								subrental = Some((sr_arity as usize, syn::Ty::Path(qself.clone(), sr_borrow), syn::Ty::Path(qself.clone(), sr_borrow_mut)));
 							} else {
 								panic!(
-									"`borrows` value of `subrental` attribute on struct `{}` field `{}` must be a type path.",
+									"Struct `{}` subrental field `{}` must be a type path.",
 									item.ident,
 									field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 								);
 							}
 						},
 						_ => panic!(
-							"`subrental` attribute on struct `{}` field `{}` expects `arity = int` and optionally `borrows = \"ty\"`.",
+							"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
 							item.ident,
 							field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 						),
 					}
+
+					true
 				} else { false }
 			},
 			_ => false,
 		}) {
-			rfattrs.remove(subrental_pos);
+			rfattrs.remove(sr_pos);
 		}
 
 		if rfattrs.iter().any(|attr| !attr.is_sugared_doc) {
@@ -166,22 +162,22 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			);
 		}
 
-		let mut rlt_args = HashSet::new();
-		if let Some((subrental_arity, ..)) = subrental {
+		let mut rlt_args = Vec::new();
+		if let Some((sr_arity, ..)) = subrental {
 			if let Some(ref field_ident) = field.ident {
-				for subrental_idx in 0 .. subrental_arity {
-					rlt_args.insert(syn::Lifetime::new(format!("'{}_{}", field_ident, subrental_idx)));
+				for sr_idx in 0 .. sr_arity {
+					rlt_args.push(syn::Lifetime::new(format!("'{}_{}", field_ident, sr_idx)));
 				}
 			} else {
-				for subrental_idx in 0 .. subrental_arity {
-					rlt_args.insert(syn::Lifetime::new(format!("'_{}_{}", field_idx, subrental_idx)));
+				for sr_idx in 0 .. sr_arity {
+					rlt_args.push(syn::Lifetime::new(format!("'_{}_{}", field_idx, sr_idx)));
 				}
 			}
 		} else {
 			if let Some(ref field_ident) = field.ident {
-				rlt_args.insert(syn::Lifetime::new(format!("'{}", field_ident)));
+				rlt_args.push(syn::Lifetime::new(format!("'{}", field_ident)));
 			} else {
-				rlt_args.insert(syn::Lifetime::new(format!("'_{}", field_idx)));
+				rlt_args.push(syn::Lifetime::new(format!("'_{}", field_idx)));
 			}
 		}
 
@@ -205,8 +201,8 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		});
 	}
 
-	let rlt_args = rfields.iter().fold(HashSet::new(), |mut rlt_args, rfield| { rlt_args.extend(rfield.rlt_args.iter().map(|lt| lt.clone())); rlt_args });
-	if let Some(collide) = rlt_args.iter().find(|rlt_arg| gen.lifetimes.iter().any(|lt_def| lt_def.lifetime == **rlt_arg)) {
+	let struct_rlt_args = &rfields.iter().fold(Vec::new(), |mut rlt_args, rfield| { rlt_args.extend(rfield.rlt_args.iter()); rlt_args });
+	if let Some(collide) = struct_rlt_args.iter().find(|rlt_arg| struct_generics.lifetimes.iter().any(|lt_def| lt_def.lifetime == ***rlt_arg)) {
 		panic!("Struct `{}` lifetime parameter `{}` collides with rental lifetime.", item.ident, collide.ident);
 	}
 
@@ -224,7 +220,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 					syn::VariantData::Struct(reverse_rfields)
 				}
 			},
-			gen.clone()
+			struct_generics.clone()
 		),
 	};
 
@@ -232,39 +228,150 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 
 	let item_ident = &item.ident;
 	let item_vis = &item.vis;
-	if !is_mut {
-		let borrow_tys = rfields.iter().map(|rfield| {
-		});
 
-		if is_tup {
-			(quote!{
-				#item_vis struct #borrows_ident(
-					//#(& #borrow_tys),*
-				);
-			}).to_tokens(tokens);
-		} else {
-			let field_names = fields.iter().map(|field| field.ident.as_ref().unwrap());
+	let (struct_impl_params, struct_impl_args, struct_where_clause) = struct_generics.split_for_impl();
+	let struct_lt_params = &struct_generics.lifetimes;
+	let struct_ty_params = &struct_generics.ty_params;
+	let struct_lt_args = &struct_lt_params.iter().map(|lt_def| &lt_def.lifetime).collect::<Vec<_>>();
+	let struct_ty_args = &struct_ty_params.iter().map(|ty_param| &ty_param.ident).collect::<Vec<_>>();
 
-			(quote!{
-				#item_vis struct #borrows_ident {
-					//#(#field_names: & #borrow_tys),*
-				}
-			}).to_tokens(tokens);
+	let borrow_ident = syn::Ident::new(item.ident.to_string() + "_Borrow");
+	let borrow_mut_ident = syn::Ident::new(item.ident.to_string() + "_BorrowMut");
+	let borrow_tys = &borrow_tys_vec(item, &rfields, &fields, is_rental_mut, false);
+	let borrow_mut_tys = &borrow_tys_vec(item, &rfields, &fields, is_rental_mut, true);
+
+	let mut borrow_rlt_params = Vec::new();
+	borrow_rlt_params.push(syn::LifetimeDef {
+		attrs: Vec::with_capacity(0),
+		lifetime: struct_rlt_args[0].clone(),
+		bounds: struct_lt_params.iter().map(|lt_def| lt_def.lifetime.clone()).collect(),
+	});
+	borrow_rlt_params.extend(struct_rlt_args.iter().skip(1).zip(struct_rlt_args.iter()).map(|(rlt_arg, prev_rlt_arg)| {
+		syn::LifetimeDef {
+			attrs: Vec::with_capacity(0),
+			lifetime: (**rlt_arg).clone(),
+			bounds: vec![(**prev_rlt_arg).clone()],
 		}
+	}));
+	let borrow_rlt_params = &borrow_rlt_params;
 
-		(quote!{
-			impl #item_ident {
-			}
-		}).to_tokens(tokens);
+	if is_tup {
+		quote!(
+			#item_vis struct #borrow_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*>(
+				#(pub #borrow_tys),*
+			) #struct_where_clause;
+
+			#item_vis struct #borrow_mut_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*>(
+				#(pub #borrow_mut_tys),*
+			) #struct_where_clause;
+		).to_tokens(tokens);
 	} else {
+		let field_names = &fields.iter().map(|field| field.ident.as_ref().unwrap()).collect::<Vec<_>>();
+
+		quote!(
+			#item_vis struct #borrow_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*> #struct_where_clause {
+				#(pub #field_names: #borrow_tys,)*
+			}
+
+			#item_vis struct #borrow_mut_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*> #struct_where_clause {
+				#(pub #field_names: #borrow_mut_tys,)*
+			}
+		).to_tokens(tokens);
 	}
+
+	quote!(
+		impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
+			pub fn rent_all<F, R>(&self, f: F) -> R where
+				F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> R,
+				R: #(#struct_lt_args +)*,
+			{
+				panic!();
+			}
+
+			pub fn rent<F, R>(&self, f: F) -> R where
+				F: for<#(#struct_rlt_args,)*> FnOnce() -> R,
+				R: #(#struct_lt_args +)*,
+			{
+				panic!();
+			}
+		}
+	).to_tokens(tokens);
+}
+
+
+fn borrow_tys_vec(item: &syn::Item, rfields: &[RentalField], fields: &[syn::Field], is_rental_mut: bool, is_borrow_mut: bool) -> Vec<quote::Tokens> {
+	rfields.iter().zip(fields.iter()).enumerate().map(|(field_idx, (rfield, field))| {
+		if let Some(ref subrental) = rfield.subrental {
+			let (rfield_lt_args, rfield_ty_args) = if let syn::Ty::Path(_, ref field_path) = field.ty {
+				let last_idx = field_path.segments.len();
+				if let syn::PathParameters::AngleBracketed(ref bracket_params) = field_path.segments[last_idx].parameters {
+					(&bracket_params.lifetimes, &bracket_params.types)
+				} else {
+					panic!(
+						"Parameters on struct `{}` subrental field `{}` must be angle-bracketed.",
+						item.ident,
+						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+					);
+				}
+			} else {
+				panic!(
+					"Struct `{}` subrental field `{}` must be a type path.",
+					item.ident,
+					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+				);
+			};
+
+			let rfield_rlt_args = &rfield.rlt_args;
+			let sr_borrow = &subrental.1;
+			let sr_borrow_mut = &subrental.2;
+
+			if !is_rental_mut {
+				if field_idx == fields.len() - 1 && is_borrow_mut {
+					quote!(#sr_borrow_mut<#(#rfield_lt_args,)* #(#rfield_rlt_args,)* #(#rfield_ty_args),*>)
+				} else {
+					quote!(#sr_borrow<#(#rfield_lt_args,)* #(#rfield_rlt_args,)* #(#rfield_ty_args),*>)
+				}
+			} else {
+				if field_idx == fields.len() - 1 {
+					if is_borrow_mut {
+						quote!(#sr_borrow_mut<#(#rfield_lt_args,)* #(#rfield_rlt_args,)* #(#rfield_ty_args),*>)
+					} else {
+						quote!(#sr_borrow<#(#rfield_lt_args,)* #(#rfield_rlt_args,)* #(#rfield_ty_args),*>)
+					}
+				} else {
+					quote!(__rental_prelude::core::marker::PhantomData<#sr_borrow<#(#rfield_lt_args,)* #(#rfield_rlt_args,)* #(#rfield_ty_args),*>>)
+				}
+			}
+		} else {
+			let rfield_rlt_arg = &rfield.rlt_args[0];
+			let field_ty = &field.ty;
+
+			if !is_rental_mut {
+				if field_idx == fields.len() - 1 && is_borrow_mut {
+					quote!(&#rfield_rlt_arg mut #field_ty)
+				} else {
+					quote!(&#rfield_rlt_arg #field_ty)
+				}
+			} else {
+				if field_idx == fields.len() - 1 {
+					if is_borrow_mut {
+						quote!(&#rfield_rlt_arg mut #field_ty)
+					} else {
+						quote!(&#rfield_rlt_arg #field_ty)
+					}
+				} else {
+					quote!(__rental_prelude::core::marker::PhantomData<&#rfield_rlt_arg #field_ty>)
+				}
+			}
+		}
+	}).collect()
 }
 
 
 struct RentalField {
 	pub field: syn::Field,
-	pub subrental: Option<(usize, Option<syn::Path>)>,
-	pub rlt_args: HashSet<syn::Lifetime>,
+	pub subrental: Option<(usize, syn::Ty, syn::Ty)>,
+	pub rlt_args: Vec<syn::Lifetime>,
 }
 
 

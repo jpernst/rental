@@ -18,5 +18,4 @@ std = ["stable_deref_trait/std"]
 
 [dependencies]
 rental-impl = { path = "rental-impl" }
-procedural-masquerade = "0.1.1"
 stable_deref_trait = { version = "1.0.0", default-features = false }
