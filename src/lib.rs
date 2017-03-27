@@ -70,8 +70,8 @@ macro_rules! rental {
 }
 
 
-struct A { }
-struct B<'a> {
+pub struct A { }
+pub struct B<'a> {
 	a: &'a A,
 }
 

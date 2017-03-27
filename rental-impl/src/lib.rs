@@ -240,28 +240,29 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let borrow_tys = &borrow_tys_vec(item, &rfields, &fields, is_rental_mut, false);
 	let borrow_mut_tys = &borrow_tys_vec(item, &rfields, &fields, is_rental_mut, true);
 
-	let mut borrow_rlt_params = Vec::new();
-	borrow_rlt_params.push(syn::LifetimeDef {
-		attrs: Vec::with_capacity(0),
-		lifetime: struct_rlt_args[0].clone(),
-		bounds: struct_lt_params.iter().map(|lt_def| lt_def.lifetime.clone()).collect(),
-	});
-	borrow_rlt_params.extend(struct_rlt_args.iter().skip(1).zip(struct_rlt_args.iter()).map(|(rlt_arg, prev_rlt_arg)| {
+	let borrow_lt_params = &struct_lt_params.iter().map(|lt_def| {
+		let mut lt_def = (*lt_def).clone();
+		lt_def.bounds.push(struct_rlt_args[0].clone());
+		lt_def
+	}).chain(struct_rlt_args.iter().zip(struct_rlt_args.iter().skip(1)).map(|(rlt_arg, next_rlt_arg)| {
 		syn::LifetimeDef {
 			attrs: Vec::with_capacity(0),
 			lifetime: (**rlt_arg).clone(),
-			bounds: vec![(**prev_rlt_arg).clone()],
+			bounds: vec![(**next_rlt_arg).clone()],
 		}
-	}));
-	let borrow_rlt_params = &borrow_rlt_params;
+	})).chain(Some(syn::LifetimeDef {
+			attrs: Vec::with_capacity(0),
+			lifetime: struct_rlt_args[struct_rlt_args.len() - 1].clone(),
+			bounds: Vec::with_capacity(0),
+	})).collect::<Vec<_>>();
 
 	if is_tup {
 		quote!(
-			#item_vis struct #borrow_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*>(
+			#item_vis struct #borrow_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*>(
 				#(pub #borrow_tys),*
 			) #struct_where_clause;
 
-			#item_vis struct #borrow_mut_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*>(
+			#item_vis struct #borrow_mut_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*>(
 				#(pub #borrow_mut_tys),*
 			) #struct_where_clause;
 		).to_tokens(tokens);
@@ -269,11 +270,11 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		let field_names = &fields.iter().map(|field| field.ident.as_ref().unwrap()).collect::<Vec<_>>();
 
 		quote!(
-			#item_vis struct #borrow_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*> #struct_where_clause {
+			#item_vis struct #borrow_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_where_clause {
 				#(pub #field_names: #borrow_tys,)*
 			}
 
-			#item_vis struct #borrow_mut_ident<#(#struct_lt_params,)* #(#borrow_rlt_params,)* #(#struct_ty_params),*> #struct_where_clause {
+			#item_vis struct #borrow_mut_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_where_clause {
 				#(pub #field_names: #borrow_mut_tys,)*
 			}
 		).to_tokens(tokens);
