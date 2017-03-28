@@ -4,13 +4,20 @@
 extern crate core;
 #[macro_use]
 extern crate rental_impl;
+extern crate stable_deref_trait;
 
 pub use rental_impl::*;
 
 
 #[doc(hidden)]
 pub mod __rental_prelude {
-	pub use core;
+	pub use core::marker::PhantomData;
+	pub use core::ops::{Deref, DerefMut};
+	pub use core::mem::transmute;
+	pub use stable_deref_trait::StableDeref;
+
+	#[inline(always)]
+	pub fn static_assert_stable_deref<T: StableDeref>() { }
 }
 
 
@@ -24,10 +31,11 @@ macro_rules! rental {
 	} => {
 		$(#[$attr])*
 		mod $rental_mod {
+			#[allow(unused_imports)]
 			use $crate::__rental_prelude;
 
-			#[derive(__rental_impl)]
 			#[allow(unused)]
+			#[derive(__rental_impl)]
 			enum ProceduralMasqueradeDummyType {
 				Input = (0, stringify!($($body)*)).0
 			}
@@ -41,10 +49,11 @@ macro_rules! rental {
 	} => {
 		$(#[$attr])*
 		pub mod $rental_mod {
+			#[allow(unused_imports)]
 			use $crate::__rental_prelude;
 
-			#[derive(__rental_impl)]
 			#[allow(unused)]
+			#[derive(__rental_impl)]
 			enum ProceduralMasqueradeDummyType {
 				Input = (0, stringify!($($body)*)).0
 			}
@@ -58,10 +67,11 @@ macro_rules! rental {
 	} => {
 		$(#[$attr])*
 		pub($($vis)*) mod $rental_mod {
+			#[allow(unused_imports)]
 			use $crate::__rental_prelude;
 
-			#[derive(__rental_impl)]
 			#[allow(unused)]
+			#[derive(__rental_impl)]
 			enum ProceduralMasqueradeDummyType {
 				Input = (0, stringify!($($body)*)).0
 			}
@@ -72,7 +82,7 @@ macro_rules! rental {
 
 pub struct A { }
 pub struct B<'a> {
-	a: &'a A,
+	_a: &'a A,
 }
 
 rental!{
@@ -81,7 +91,7 @@ rental!{
 
 		#[rental]
 		pub struct Foo {
-			a: A,
+			a: Box<A>,
 			b: B<'a>,
 		}
 	}
