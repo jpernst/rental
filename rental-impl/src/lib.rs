@@ -193,7 +193,12 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		};
 
 		rfields.push(RentalField{
-			orig: field.clone(),
+			name: if let Some(ref ident) = field.ident {
+				(*ident).clone()
+			} else {
+				syn::Ident::new(format!("v{}", field_idx.to_string()))
+			},
+			orig_ty: field.ty.clone(),
 			erased: syn::Field{
 				ident: field.ident.clone(),
 				vis: field.vis.clone(),
@@ -242,20 +247,16 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let struct_ty_args = &struct_ty_params.iter().map(|ty_param| &ty_param.ident).collect::<Vec<_>>();
 	let struct_fake_rlt_args = &iter::repeat(syn::Lifetime::new("'__a")).take(struct_rlt_args.len()).collect::<Vec<_>>();
 
-	let local_idents = &fields.iter().enumerate().map(|(idx, field)| if let Some(ref ident) = field.orig.ident {
-		(*ident).clone()
-	} else {
-		syn::Ident::new(format!("v{}", idx.to_string()))
-	}).collect::<Vec<_>>();
+	let local_idents = &fields.iter().map(|field| &field.name).collect::<Vec<_>>();
 
 	let borrow_ident = syn::Ident::new(item.ident.to_string() + "_Borrow");
 	let borrow_mut_ident = syn::Ident::new(item.ident.to_string() + "_BorrowMut");
-	let borrow_tys_and_exprs = &make_borrow_quotes(item, &fields, &local_idents, is_rental_mut, is_tup, false);
+	let borrow_tys_and_exprs = &make_borrow_quotes(item, &fields, is_rental_mut, is_tup, false);
 	let borrow_tys = &borrow_tys_and_exprs.iter().map(|&BorrowQuotes{ref ty, ..}| ty).collect::<Vec<_>>();
 	let borrow_tail_ty = &borrow_tys[fields.len() - 1];
 	let borrow_self_exprs = &borrow_tys_and_exprs.iter().map(|&BorrowQuotes{ref self_expr, ..}| self_expr).collect::<Vec<_>>();
 	let borrow_tail_expr = &borrow_self_exprs[fields.len() - 1];
-	let borrow_mut_tys_and_exprs = &make_borrow_quotes(item, &fields, &local_idents, is_rental_mut, is_tup, true);
+	let borrow_mut_tys_and_exprs = &make_borrow_quotes(item, &fields, is_rental_mut, is_tup, true);
 	let borrow_mut_tys = &borrow_mut_tys_and_exprs.iter().map(|&BorrowQuotes{ref ty, ..}| ty).collect::<Vec<_>>();
 	let borrow_mut_tail_ty = &borrow_mut_tys[fields.len() - 1];
 	let borrow_mut_self_exprs = &borrow_mut_tys_and_exprs.iter().map(|&BorrowQuotes{ref self_expr, ..}| self_expr).collect::<Vec<_>>();
@@ -277,15 +278,15 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			bounds: Vec::with_capacity(0),
 	})).collect::<Vec<_>>();
 
-	let head_ty = &fields[0].orig.ty;
+	let head_ty = &fields[0].orig_ty;
 	let prefix_field_tys = &fields.iter().map(|field| &field.erased.ty).take(fields.len() - 1).collect::<Vec<_>>();
 	let suffix_local_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
 	let suffix_closure_tys = &fields.iter().skip(1).map(|_field| quote!(FnOnce())).collect::<Vec<_>>();
 	let _suffix_field_tys = &fields.iter().skip(1).map(|field| &field.erased.ty).collect::<Vec<_>>();
 	let tail_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
 
-	let suffix_closure_ty_idents = &fields.iter().enumerate().skip(1).map(|(idx, ref field)| if let Some(ref ident) = field.orig.ident {
-		syn::Ident::new(format!("__F{}", ident))
+	let suffix_closure_ty_idents = &fields.iter().enumerate().skip(1).map(|(idx, ref field)| if !is_tup {
+		syn::Ident::new(format!("__F{}", field.name))
 	} else {
 		syn::Ident::new(format!("__F{}", idx))
 	}).collect::<Vec<_>>();
@@ -397,12 +398,10 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 }
 
 
-fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], local_idents: &[syn::Ident], is_rental_mut: bool, is_tup: bool, is_borrow_mut: bool)
-	-> Vec<BorrowQuotes>
-{
+fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: bool, is_tup: bool, is_borrow_mut: bool) -> Vec<BorrowQuotes> {
 	(0 .. fields.len()).map(|idx| {
 		if let Some(ref subrental) = fields[idx].subrental {
-			let (field_lt_args, field_ty_args) = if let syn::Ty::Path(_, ref field_path) = fields[idx].orig.ty {
+			let (field_lt_args, field_ty_args) = if let syn::Ty::Path(_, ref field_path) = fields[idx].orig_ty {
 				let last_idx = field_path.segments.len();
 				if let syn::PathParameters::AngleBracketed(ref bracket_params) = field_path.segments[last_idx].parameters {
 					(&bracket_params.lifetimes, &bracket_params.types)
@@ -410,14 +409,14 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], local_idents: &[
 					panic!(
 						"Parameters on struct `{}` subrental field `{}` must be angle-bracketed.",
 						item.ident,
-						fields[idx].orig.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| idx.to_string())
+						if is_tup { idx.to_string() } else { fields[idx].name.to_string() }
 					);
 				}
 			} else {
 				panic!(
 					"Struct `{}` subrental field `{}` must be a type path.",
 					item.ident,
-					fields[idx].orig.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| idx.to_string())
+					if is_tup { idx.to_string() } else { fields[idx].name.to_string() }
 				);
 			};
 
@@ -431,11 +430,11 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], local_idents: &[
 					self_expr: if is_tup {
 						quote!(unsafe { self.#idx.borrow_mut() })
 					} else {
-						let field_ident = fields[idx].orig.ident.as_ref().unwrap();
+						let field_ident = &fields[idx].name;
 						quote!(unsafe { self.#field_ident.borrow_mut() })
 					},
 					local_expr: {
-						let local_ident = &local_idents[idx];
+						let local_ident = &fields[idx].name;
 						quote!(unsafe { #local_ident.borrow_mut() })
 					},
 				}
@@ -445,11 +444,11 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], local_idents: &[
 					self_expr: if is_tup {
 						quote!(unsafe { self.#idx.borrow() })
 					} else {
-						let field_ident = fields[idx].orig.ident.as_ref().unwrap();
+						let field_ident = &fields[idx].name;
 						quote!(unsafe { self.#field_ident.borrow() })
 					},
 					local_expr: {
-						let local_ident = &local_idents[idx];
+						let local_ident = &fields[idx].name;
 						quote!(unsafe { #local_ident.borrow() })
 					},
 				}
@@ -462,7 +461,7 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], local_idents: &[
 			}
 		} else {
 			let field_rlt_arg = &fields[idx].self_rlt_args[0];
-			let field_ty = &fields[idx].orig.ty;
+			let field_ty = &fields[idx].orig_ty;
 
 			if idx == fields.len() - 1 && is_borrow_mut {
 				BorrowQuotes {
@@ -470,11 +469,11 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], local_idents: &[
 					self_expr: if is_tup {
 						quote!(unsafe { __rental_prelude::transmute(&mut self.#idx) })
 					} else {
-						let field_ident = fields[idx].orig.ident.as_ref().unwrap();
+						let field_ident = &fields[idx].name;
 						quote!(unsafe { __rental_prelude::transmute(&mut self.#field_ident) })
 					},
 					local_expr: {
-						let local_ident = &local_idents[idx];
+						let local_ident = &fields[idx].name;
 						quote!(unsafe { __rental_prelude::transmute(&mut #local_ident) })
 					},
 				}
@@ -484,11 +483,11 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], local_idents: &[
 					self_expr: if is_tup {
 						quote!(unsafe { __rental_prelude::transmute(&self.#idx) })
 					} else {
-						let field_ident = fields[idx].orig.ident.as_ref().unwrap();
+						let field_ident = &fields[idx].name;
 						quote!(unsafe { __rental_prelude::transmute(&self.#field_ident) })
 					},
 					local_expr: {
-						let local_ident = &local_idents[idx];
+						let local_ident = &fields[idx].name;
 						quote!(unsafe { __rental_prelude::transmute(&#local_ident) })
 					},
 				}
@@ -510,7 +509,8 @@ fn make_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], is_rent
 
 
 struct RentalField {
-	pub orig: syn::Field,
+	pub name: syn::Ident,
+	pub orig_ty: syn::Ty,
 	pub erased: syn::Field,
 	pub subrental: Option<(usize, syn::Ty, syn::Ty)>,
 	pub self_rlt_args: Vec<syn::Lifetime>,
