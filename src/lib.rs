@@ -88,13 +88,33 @@ macro_rules! rental {
 }
 
 
-pub struct A { }
+pub struct A {
+	i: i32,
+}
 pub struct B<'a> {
-	_a: &'a A,
+	a: &'a A,
 }
 
+impl A {
+	pub fn borrow(&self) -> B {
+		B { a: self }
+	}
+}
+
+
+pub fn test() {
+	use rental_mod::Foo;
+
+	let a = A { i: 5 };
+	let f = Foo::new(Box::new(a), |a| a.borrow());
+	f.rent(|b| println!("{}", b.a.i));
+	let i = f.rent(|b| b.a.i);
+}
+
+
+
 rental!{
-	mod rental_mod {
+	pub mod rental_mod {
 		use super::{A, B};
 
 		#[rental]
@@ -103,5 +123,10 @@ rental!{
 			b: B<'a>,
 		}
 
+		#[rental_mut]
+		pub struct Bar {
+			a: Box<A>,
+			b: B<'a>,
+		}
 	}
 }
