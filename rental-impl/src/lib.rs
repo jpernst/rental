@@ -342,9 +342,12 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			{
 				#(__rental_prelude::static_assert_stable_deref::<#prefix_field_tys>();)*
 
-				#(let mut #suffix_local_idents = match #suffix_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute(t) }) {
-					Ok(t) => t,
-					Err(e) => return Err(__rental_prelude::TryNewError(e, #head_local_ident_rep)),
+				#(let mut #suffix_local_idents = {
+					let temp = #suffix_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute(t) });
+					match temp {
+						Ok(t) => t,
+						Err(e) => return Err(__rental_prelude::TryNewError(e, #head_local_ident_rep)),
+					}
 				};)*
 
 				Ok(#item_ident {
@@ -397,15 +400,16 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: b
 			};
 
 			let field_ident = &fields[idx].name;
-			let field_rlt_args = &fields[idx].self_rlt_args;
+			let self_rlt_args = &fields[idx].self_rlt_args;
+			let erased_self_rlt_args = &self_rlt_args.iter().map(|_| syn::Lifetime::new("'static")).collect::<Vec<_>>();
 			let sr_borrow = &subrental.1;
 			let sr_borrow_mut = &subrental.2;
 
 			BorrowQuotes {
 				ty: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(#sr_borrow<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_borrow<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
 				} else {
-					quote!(__rental_prelude::PhantomData<#sr_borrow<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>>)
+					quote!(__rental_prelude::PhantomData<#sr_borrow<#(#field_lt_args,)* #(#erased_self_rlt_args,)* #(#field_ty_args),*>>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(self.#field_ident.borrow())
@@ -413,9 +417,9 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: b
 					quote!(__rental_prelude::PhantomData::<#sr_borrow<#(#field_ty_args),*>>)
 				},
 				mut_ty: if idx == fields.len() - 1 {
-					quote!(#sr_borrow_mut<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_borrow_mut<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
 				} else {
-					quote!(__rental_prelude::PhantomData<#sr_borrow_mut<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>>)
+					quote!(__rental_prelude::PhantomData<#sr_borrow_mut<#(#field_lt_args,)* #(#erased_self_rlt_args,)* #(#field_ty_args),*>>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
 					quote!(self.#field_ident.borrow_mut())
@@ -423,9 +427,9 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: b
 					quote!(__rental_prelude::PhantomData::<#sr_borrow_mut<#(#field_ty_args),*>>)
 				},
 				new_ty: if !is_rental_mut  {
-					quote!(#sr_borrow<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_borrow<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
 				} else {
-					quote!(#sr_borrow_mut<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_borrow_mut<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
 				},
 				new_expr: if !is_rental_mut {
 					quote!(#field_ident.borrow())
@@ -436,33 +440,34 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: b
 		} else {
 			let field_ident = &fields[idx].name;
 			let field_rlt_arg = &fields[idx].self_rlt_args[0];
-			let field_ty = &fields[idx].orig_ty;
+			let orig_ty = &fields[idx].orig_ty;
+			let erased_ty = &fields[idx].erased.ty;
 
 			BorrowQuotes {
 				ty: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(&#field_rlt_arg #field_ty)
+					quote!(&#field_rlt_arg #orig_ty)
 				} else {
-					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #field_ty>)
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #erased_ty>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(&self.#field_ident)
 				} else {
-					quote!(__rental_prelude::PhantomData::<&#field_ty>)
+					quote!(__rental_prelude::PhantomData::<&#erased_ty>)
 				},
 				mut_ty: if idx == fields.len() - 1 {
-					quote!(&#field_rlt_arg mut #field_ty)
+					quote!(&#field_rlt_arg mut #orig_ty)
 				} else {
-					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #field_ty>)
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #erased_ty>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
 					quote!(&mut self.#field_ident)
 				} else {
-					quote!(__rental_prelude::PhantomData::<&mut #field_ty>)
+					quote!(__rental_prelude::PhantomData::<&mut #erased_ty>)
 				},
 				new_ty: if !is_rental_mut  {
-					quote!(&#field_rlt_arg #field_ty)
+					quote!(&#field_rlt_arg #orig_ty)
 				} else {
-					quote!(&#field_rlt_arg mut #field_ty)
+					quote!(&#field_rlt_arg mut #orig_ty)
 				},
 				new_expr: if !is_rental_mut {
 					quote!(&#field_ident)

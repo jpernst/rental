@@ -94,6 +94,9 @@ pub struct A {
 pub struct B<'a> {
 	a: &'a A,
 }
+pub struct C<'a: 'b, 'b> {
+	b: &'b B<'a>,
+}
 
 impl A {
 	pub fn borrow(&self) -> B {
@@ -101,32 +104,42 @@ impl A {
 	}
 }
 
+impl Drop for A {
+	fn drop(&mut self) { }
+}
+impl<'a> Drop for B<'a> {
+	fn drop(&mut self) { }
+}
+impl<'a, 'b> Drop for C<'a, 'b> {
+	fn drop(&mut self) { }
+}
+
+impl<'a> B<'a> {
+	pub fn borrow_again<'b>(&'b self) -> C<'a, 'b> {
+		C { b: self }
+	}
+}
 
 pub fn test() {
 	use rental_mod::Foo;
 
 	let a = A { i: 5 };
-	let f = Foo::new(Box::new(a), |a| a.borrow());
-	f.rent(|b| println!("{}", b.a.i));
-	let i = f.rent(|b| b.a.i);
+	let r = Foo::new(Box::new(a), |a| Box::new(a.borrow()), |b, _| b.borrow_again());
+	let i = r.rent(|c| c.b.a.i);
 }
 
 
 
 rental!{
 	pub mod rental_mod {
-		use super::{A, B};
+		use super::{A, B, C};
 
 		#[rental]
 		pub struct Foo {
 			a: Box<A>,
-			b: B<'a>,
+			b: Box<B<'a>>,
+			c: C<'a, 'b>,
 		}
 
-		#[rental_mut]
-		pub struct Bar {
-			a: Box<A>,
-			b: B<'a>,
-		}
 	}
 }
