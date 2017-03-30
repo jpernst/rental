@@ -346,7 +346,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 					let temp = #suffix_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute(t) });
 					match temp {
 						Ok(t) => t,
-						Err(e) => return Err(__rental_prelude::TryNewError(e, #head_local_ident_rep)),
+						Err(e) => return Err(__rental_prelude::TryNewError(e.into(), #head_local_ident_rep)),
 					}
 				};)*
 
@@ -357,13 +357,13 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 
 			pub unsafe fn borrow<'__a>(&'__a self) -> #borrow_ident<#(#struct_lt_args,)* #(#struct_fake_rlt_args,)* #(#struct_ty_args),*> {
 				#borrow_ident {
-					#(#local_idents: __rental_prelude::transmute(#borrow_exprs),)*
+					#(#local_idents: #borrow_exprs,)*
 				}
 			}
 
 			pub unsafe fn borrow_mut<'__a>(&'__a mut self) -> #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_fake_rlt_args,)* #(#struct_ty_args),*> {
 				#borrow_mut_ident {
-					#(#local_idents: __rental_prelude::transmute(#borrow_mut_exprs),)*
+					#(#local_idents: #borrow_mut_exprs,)*
 				}
 			}
 
@@ -371,14 +371,14 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
-				f(#borrow_tail_expr)
+				f(unsafe { #borrow_tail_expr })
 			}
 
 			pub fn rent_mut<__F, __R>(&mut self, f: __F) -> __R where
 				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
-				f(#borrow_mut_tail_expr)
+				f(unsafe { #borrow_mut_tail_expr })
 			}
 		}
 	).to_tokens(tokens);
@@ -450,7 +450,7 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: b
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #erased_ty>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(&self.#field_ident)
+					quote!(__rental_prelude::transmute(&self.#field_ident))
 				} else {
 					quote!(__rental_prelude::PhantomData::<&#erased_ty>)
 				},
@@ -460,7 +460,7 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: b
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #erased_ty>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
-					quote!(&mut self.#field_ident)
+					quote!(__rental_prelude::transmute(&mut self.#field_ident))
 				} else {
 					quote!(__rental_prelude::PhantomData::<&mut #erased_ty>)
 				},

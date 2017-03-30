@@ -124,8 +124,6 @@ pub fn test() {
 	use rental_mod::Foo;
 
 	let a = A { i: 5 };
-	let r = Foo::new(Box::new(a), |a| Box::new(a.borrow()), |b, _| b.borrow_again());
-	let i = r.rent(|c| c.b.a.i);
 }
 
 
@@ -137,9 +135,14 @@ rental!{
 		#[rental]
 		pub struct Foo {
 			a: Box<A>,
-			b: Box<B<'a>>,
-			c: C<'a, 'b>,
+			b: B<'a>,
 		}
 
+//		#[rental]
+//		pub struct Bar {
+//			#[subrental(arity = 2)]
+//			b: Foo,
+//			c: C<'b_0, 'b_1>,
+//		}
 	}
 }
