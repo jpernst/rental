@@ -17,9 +17,16 @@ pub mod __rental_prelude {
 	pub use core::result::Result;
 	pub use stable_deref_trait::StableDeref;
 
+	pub use super::{TryNewError, TryNewResult};
+
+
 	#[inline(always)]
 	pub fn static_assert_stable_deref<T: StableDeref>() { }
 }
+
+
+pub struct TryNewError<E, H> (pub E, pub H);
+pub type TryNewResult<T, E, H> = Result<T, TryNewError<E, H>>;
 
 
 #[macro_export]
@@ -95,5 +102,6 @@ rental!{
 			a: Box<A>,
 			b: B<'a>,
 		}
+
 	}
 }
