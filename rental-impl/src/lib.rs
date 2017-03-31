@@ -120,25 +120,10 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 							Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::NameValue(ref sr_arity_name, syn::Lit::Int(sr_arity, ..)))),
 							None
 						) if sr_arity_name == "arity" => {
-							if let syn::Ty::Path(ref qself, ref sr_borrow) = field.ty {
-								let last_idx = sr_borrow.segments.len() - 1;
-
-								let mut sr_borrow = sr_borrow.clone();
-								sr_borrow.segments[last_idx].ident = syn::Ident::new(sr_borrow.segments[0].ident.to_string() + "_Borrow");
-								sr_borrow.segments[last_idx].parameters = syn::PathParameters::none();
-
-								let mut sr_borrow_mut = sr_borrow.clone();
-								sr_borrow_mut.segments[last_idx].ident = syn::Ident::new(sr_borrow.segments[0].ident.to_string() + "_BorrowMut");
-								sr_borrow_mut.segments[last_idx].parameters = syn::PathParameters::none();
-
-								subrental = Some((sr_arity as usize, syn::Ty::Path(qself.clone(), sr_borrow), syn::Ty::Path(qself.clone(), sr_borrow_mut)));
-							} else {
-								panic!(
-									"Struct `{}` subrental field `{}` must be a type path.",
-									item.ident,
-									field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
-								);
-							}
+							subrental = Some(Subrental{
+								arity: sr_arity as usize, 
+								rental_trait_ident: syn::Ident::new(format!("Rental{}", sr_arity).as_str()),
+							})
 						},
 						_ => panic!(
 							"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
@@ -164,7 +149,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		}
 
 		let mut self_rlt_args = Vec::new();
-		if let Some((sr_arity, ..)) = subrental {
+		if let Some(Subrental{arity: sr_arity, ..}) = subrental {
 			if let Some(ref field_ident) = field.ident {
 				for sr_idx in 0 .. sr_arity {
 					self_rlt_args.push(syn::Lifetime::new(format!("'{}_{}", field_ident, sr_idx)));
@@ -212,6 +197,10 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	}
 	let fields = rfields;
 
+	if fields.iter().any(|field| field.subrental.is_some()) {
+		panic!("Subrental fields are currently blocked on lazy-normalization.");
+	}
+
 	let struct_rlt_args = &fields.iter().fold(Vec::new(), |mut rlt_args, field| { rlt_args.extend(field.self_rlt_args.iter()); rlt_args });
 	if let Some(collide) = struct_rlt_args.iter().find(|rlt_arg| struct_generics.lifetimes.iter().any(|lt_def| lt_def.lifetime == ***rlt_arg)) {
 		panic!("Struct `{}` lifetime parameter `{}` collides with rental lifetime.", item.ident, collide.ident);
@@ -243,12 +232,13 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let struct_ty_args = &struct_ty_params.iter().map(|ty_param| &ty_param.ident).collect::<Vec<_>>();
 	let struct_fake_rlt_args = &iter::repeat(syn::Lifetime::new("'__a")).take(struct_rlt_args.len()).collect::<Vec<_>>();
 
+	let rental_trait_ident = syn::Ident::new(format!("Rental{}", struct_rlt_args.len()));
 	let field_idents = &fields.iter().map(|field| &field.name).collect::<Vec<_>>();
 	let local_idents = field_idents;
 
 	let borrow_ident = syn::Ident::new(item.ident.to_string() + "_Borrow");
 	let borrow_mut_ident = syn::Ident::new(item.ident.to_string() + "_BorrowMut");
-	let borrow_quotes = &make_borrow_quotes(item, &fields, is_rental_mut);
+	let borrow_quotes = &make_borrow_quotes(&fields, is_rental_mut);
 	let borrow_tys = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty, ..}| ty).collect::<Vec<_>>();
 	let borrow_tail_ty = &borrow_tys[fields.len() - 1];
 	let borrow_exprs = &borrow_quotes.iter().map(|&BorrowQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
@@ -314,6 +304,12 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	}
 
 	quote!(
+		impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_impl_params __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
+			type Borrow = #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
+			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args),* #(#struct_ty_args),*>;
+			type Prefix = ();
+		}
+
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
 		#item_vis struct #borrow_mut_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_where_clause {
 			#(#local_idents: #borrow_mut_tys,)*
@@ -385,51 +381,45 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 }
 
 
-fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
+fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
 	(0 .. fields.len()).map(|idx| {
 		if let Some(ref subrental) = fields[idx].subrental {
-			let (field_lt_args, field_ty_args) = if let syn::Ty::Path(_, ref field_path) = fields[idx].orig_ty {
-				let last_idx = field_path.segments.len();
-				if let syn::PathParameters::AngleBracketed(ref bracket_params) = field_path.segments[last_idx].parameters {
-					(&bracket_params.lifetimes, &bracket_params.types)
-				} else {
-					panic!("Parameters on struct `{}` subrental field `{}` must be angle-bracketed.", item.ident, fields[idx].name.to_string());
-				}
-			} else {
-				panic!("Struct `{}` subrental field `{}` must be a type path.", item.ident, fields[idx].name.to_string());
-			};
-
 			let field_ident = &fields[idx].name;
-			let self_rlt_args = &fields[idx].self_rlt_args;
-			let erased_self_rlt_args = &self_rlt_args.iter().map(|_| syn::Lifetime::new("'static")).collect::<Vec<_>>();
-			let sr_borrow = &subrental.1;
-			let sr_borrow_mut = &subrental.2;
+			let field_ty = &fields[idx].orig_ty;
+			let rental_trait_ident = &subrental.rental_trait_ident;
+			let field_rlt_args = &fields[idx].self_rlt_args;
+
+			let sr_as_rental = if idx == fields.len() - 1 {
+				quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>)
+			} else {
+				quote!(<<#field_ty as __rental_prelude::Deref>::Target as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>)
+			};
 
 			BorrowQuotes {
 				ty: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(#sr_borrow<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_as_rental::Borrow)
 				} else {
-					quote!(__rental_prelude::PhantomData<#sr_borrow<#(#field_lt_args,)* #(#erased_self_rlt_args,)* #(#field_ty_args),*>>)
+					quote!(__rental_prelude::PhantomData<#sr_as_rental::Borrow>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(self.#field_ident.borrow())
 				} else {
-					quote!(__rental_prelude::PhantomData::<#sr_borrow<#(#field_ty_args),*>>)
+					quote!(__rental_prelude::PhantomData)
 				},
 				mut_ty: if idx == fields.len() - 1 {
-					quote!(#sr_borrow_mut<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_as_rental::BorrowMut)
 				} else {
-					quote!(__rental_prelude::PhantomData<#sr_borrow_mut<#(#field_lt_args,)* #(#erased_self_rlt_args,)* #(#field_ty_args),*>>)
+					quote!(__rental_prelude::PhantomData<#sr_as_rental::BorrowMut>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
 					quote!(self.#field_ident.borrow_mut())
 				} else {
-					quote!(__rental_prelude::PhantomData::<#sr_borrow_mut<#(#field_ty_args),*>>)
+					quote!(__rental_prelude::PhantomData)
 				},
 				new_ty: if !is_rental_mut  {
-					quote!(#sr_borrow<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_as_rental::Borrow)
 				} else {
-					quote!(#sr_borrow_mut<#(#field_lt_args,)* #(#self_rlt_args,)* #(#field_ty_args),*>)
+					quote!(#sr_as_rental::BorrowMut)
 				},
 				new_expr: if !is_rental_mut {
 					quote!(#field_ident.borrow())
@@ -441,28 +431,27 @@ fn make_borrow_quotes(item: &syn::Item, fields: &[RentalField], is_rental_mut: b
 			let field_ident = &fields[idx].name;
 			let field_rlt_arg = &fields[idx].self_rlt_args[0];
 			let orig_ty = &fields[idx].orig_ty;
-			let erased_ty = &fields[idx].erased.ty;
 
 			BorrowQuotes {
 				ty: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(&#field_rlt_arg #orig_ty)
 				} else {
-					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #erased_ty>)
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #orig_ty>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(__rental_prelude::transmute(&self.#field_ident))
 				} else {
-					quote!(__rental_prelude::PhantomData::<&#erased_ty>)
+					quote!(__rental_prelude::PhantomData)
 				},
 				mut_ty: if idx == fields.len() - 1 {
 					quote!(&#field_rlt_arg mut #orig_ty)
 				} else {
-					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #erased_ty>)
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #orig_ty>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
 					quote!(__rental_prelude::transmute(&mut self.#field_ident))
 				} else {
-					quote!(__rental_prelude::PhantomData::<&mut #erased_ty>)
+					quote!(__rental_prelude::PhantomData)
 				},
 				new_ty: if !is_rental_mut  {
 					quote!(&#field_rlt_arg #orig_ty)
@@ -516,11 +505,17 @@ fn make_suffix_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], 
 }
 
 
+struct Subrental {
+	arity: usize,
+	rental_trait_ident: syn::Ident,
+}
+
+
 struct RentalField {
 	pub name: syn::Ident,
 	pub orig_ty: syn::Ty,
 	pub erased: syn::Field,
-	pub subrental: Option<(usize, syn::Ty, syn::Ty)>,
+	pub subrental: Option<Subrental>,
 	pub self_rlt_args: Vec<syn::Lifetime>,
 	pub used_rlt_args: Vec<syn::Lifetime>,
 }
