@@ -9,10 +9,6 @@ extern crate stable_deref_trait;
 pub use rental_impl::*;
 
 
-
-
-
-
 #[doc(hidden)]
 pub mod __rental_prelude {
 	pub use core::marker::PhantomData;
@@ -178,14 +174,15 @@ rental!{
 		#[rental]
 		pub struct Foo {
 			a: Box<A>,
-			b: B<'a>,
+			b: Box<B<'a>>,
+			c: C<'a, 'b>,
 		}
 
-		#[rental]
-		pub struct Bar {
-			#[subrental(arity = 2)]
-			a: Box<Foo>,
-			c: C<'a_0, 'a_1>,
-		}
+//		#[rental]
+//		pub struct Bar {
+//			#[subrental(arity = 2)]
+//			a: Box<Foo>,
+//			c: C<'a_0, 'a_1>,
+//		}
 	}
 }

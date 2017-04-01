@@ -197,9 +197,9 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	}
 	let fields = rfields;
 
-	if fields.iter().any(|field| field.subrental.is_some()) {
-		panic!("Subrental fields are currently blocked on lazy-normalization.");
-	}
+//	if fields.iter().any(|field| field.subrental.is_some()) {
+//		panic!("Subrental fields are currently blocked on lazy-normalization.");
+//	}
 
 	let struct_rlt_args = &fields.iter().fold(Vec::new(), |mut rlt_args, field| { rlt_args.extend(field.self_rlt_args.iter()); rlt_args });
 	if let Some(collide) = struct_rlt_args.iter().find(|rlt_arg| struct_generics.lifetimes.iter().any(|lt_def| lt_def.lifetime == ***rlt_arg)) {
@@ -248,21 +248,22 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let borrow_mut_exprs = &borrow_quotes.iter().map(|&BorrowQuotes{ref mut_expr, ..}| mut_expr).collect::<Vec<_>>();
 	let borrow_mut_tail_expr = &borrow_mut_exprs[fields.len() - 1];
 
-	let borrow_lt_params = &struct_lt_params.iter().map(|lt_def| {
-		let mut lt_def = (*lt_def).clone();
-		lt_def.bounds.push(struct_rlt_args[0].clone());
-		lt_def
-	}).chain(struct_rlt_args.iter().zip(struct_rlt_args.iter().skip(1)).map(|(rlt_arg, next_rlt_arg)| {
+	let struct_rlt_params = &struct_rlt_args.iter().zip(struct_rlt_args.iter().skip(1)).map(|(rlt_arg, next_rlt_arg)| {
 		syn::LifetimeDef {
 			attrs: Vec::with_capacity(0),
 			lifetime: (**rlt_arg).clone(),
 			bounds: vec![(**next_rlt_arg).clone()],
 		}
-	})).chain(Some(syn::LifetimeDef {
+	}).chain(Some(syn::LifetimeDef {
 			attrs: Vec::with_capacity(0),
 			lifetime: struct_rlt_args[struct_rlt_args.len() - 1].clone(),
 			bounds: Vec::with_capacity(0),
 	})).collect::<Vec<_>>();
+	let borrow_lt_params = &struct_lt_params.iter().map(|lt_def| {
+		let mut lt_def = (*lt_def).clone();
+		lt_def.bounds.push(struct_rlt_args[0].clone());
+		lt_def
+	}).chain(struct_rlt_params.iter().cloned()).collect::<Vec<_>>();
 
 	let head_local_ident = &local_idents[0];
 	let head_local_ident_rep = &iter::repeat(&head_local_ident).take(fields.len() - 1).collect::<Vec<_>>();
@@ -351,15 +352,15 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				})
 			}
 
-			pub unsafe fn borrow<'__a>(&'__a self) -> #borrow_ident<#(#struct_lt_args,)* #(#struct_fake_rlt_args,)* #(#struct_ty_args),*> {
+			pub unsafe fn borrow<'__a>(&'__a self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::Borrow {
 				#borrow_ident {
-					#(#local_idents: #borrow_exprs,)*
+					#(#local_idents: __rental_prelude::transmute(#borrow_exprs),)*
 				}
 			}
 
-			pub unsafe fn borrow_mut<'__a>(&'__a mut self) -> #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_fake_rlt_args,)* #(#struct_ty_args),*> {
+			pub unsafe fn borrow_mut<'__a>(&'__a mut self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::BorrowMut {
 				#borrow_mut_ident {
-					#(#local_idents: #borrow_mut_exprs,)*
+					#(#local_idents: __rental_prelude::transmute(#borrow_mut_exprs),)*
 				}
 			}
 
@@ -367,14 +368,14 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
-				f(unsafe { #borrow_tail_expr })
+				f(#borrow_tail_expr)
 			}
 
 			pub fn rent_mut<__F, __R>(&mut self, f: __F) -> __R where
 				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
-				f(unsafe { #borrow_mut_tail_expr })
+				f(#borrow_mut_tail_expr)
 			}
 		}
 	).to_tokens(tokens);
@@ -383,85 +384,85 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 
 fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
 	(0 .. fields.len()).map(|idx| {
+		let (field_ty, deref) = if idx == fields.len() - 1 {
+			let orig_ty = &fields[idx].orig_ty;
+			(quote!(#orig_ty), quote!())
+		} else {
+			let orig_ty = &fields[idx].orig_ty;
+			(quote!(<#orig_ty as __rental_prelude::Deref>::Target), quote!(*))
+		};
+
 		if let Some(ref subrental) = fields[idx].subrental {
 			let field_ident = &fields[idx].name;
-			let field_ty = &fields[idx].orig_ty;
 			let rental_trait_ident = &subrental.rental_trait_ident;
 			let field_rlt_args = &fields[idx].self_rlt_args;
 
-			let sr_as_rental = if idx == fields.len() - 1 {
-				quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>)
-			} else {
-				quote!(<<#field_ty as __rental_prelude::Deref>::Target as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>)
-			};
-
 			BorrowQuotes {
 				ty: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(#sr_as_rental::Borrow)
+					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow)
 				} else {
-					quote!(__rental_prelude::PhantomData<#sr_as_rental::Borrow>)
+					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(self.#field_ident.borrow())
+					quote!((#deref self.#field_ident).borrow())
 				} else {
-					quote!(__rental_prelude::PhantomData)
+					quote!(__rental_prelude::PhantomData::<()>)
 				},
 				mut_ty: if idx == fields.len() - 1 {
-					quote!(#sr_as_rental::BorrowMut)
+					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut)
 				} else {
-					quote!(__rental_prelude::PhantomData<#sr_as_rental::BorrowMut>)
+					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
-					quote!(self.#field_ident.borrow_mut())
+					quote!((#deref self.#field_ident).borrow_mut())
 				} else {
-					quote!(__rental_prelude::PhantomData)
+					quote!(__rental_prelude::PhantomData::<()>)
 				},
 				new_ty: if !is_rental_mut  {
-					quote!(#sr_as_rental::Borrow)
+					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow)
 				} else {
-					quote!(#sr_as_rental::BorrowMut)
+					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut)
 				},
 				new_expr: if !is_rental_mut {
-					quote!(#field_ident.borrow())
+					quote!((#deref #field_ident).borrow())
 				} else {
-					quote!(#field_ident.borrow_mut())
+					quote!((#deref #field_ident).borrow_mut())
 				},
 			}
 		} else {
 			let field_ident = &fields[idx].name;
 			let field_rlt_arg = &fields[idx].self_rlt_args[0];
-			let orig_ty = &fields[idx].orig_ty;
 
 			BorrowQuotes {
 				ty: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(&#field_rlt_arg #orig_ty)
+					quote!(&#field_rlt_arg #field_ty)
 				} else {
-					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #orig_ty>)
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #field_ty>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(__rental_prelude::transmute(&self.#field_ident))
+					quote!(& #deref self.#field_ident)
 				} else {
-					quote!(__rental_prelude::PhantomData)
+					quote!(__rental_prelude::PhantomData::<()>)
 				},
 				mut_ty: if idx == fields.len() - 1 {
-					quote!(&#field_rlt_arg mut #orig_ty)
+					quote!(&#field_rlt_arg mut #field_ty)
 				} else {
-					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #orig_ty>)
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #field_ty>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
-					quote!(__rental_prelude::transmute(&mut self.#field_ident))
+					quote!(&mut #deref self.#field_ident)
 				} else {
-					quote!(__rental_prelude::PhantomData)
+					quote!(__rental_prelude::PhantomData::<()>)
 				},
 				new_ty: if !is_rental_mut  {
-					quote!(&#field_rlt_arg #orig_ty)
+					quote!(&#field_rlt_arg #field_ty)
 				} else {
-					quote!(&#field_rlt_arg mut #orig_ty)
+					quote!(&#field_rlt_arg mut #field_ty)
 				},
 				new_expr: if !is_rental_mut {
-					quote!(&#field_ident)
+					quote!(& #deref #field_ident)
 				} else {
-					quote!(&mut #field_ident)
+					quote!(&mut #deref #field_ident)
 				},
 			}
 		}
