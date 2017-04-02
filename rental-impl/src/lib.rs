@@ -247,6 +247,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let borrow_mut_tail_ty = &borrow_mut_tys[fields.len() - 1];
 	let borrow_mut_exprs = &borrow_quotes.iter().map(|&BorrowQuotes{ref mut_expr, ..}| mut_expr).collect::<Vec<_>>();
 	let borrow_mut_tail_expr = &borrow_mut_exprs[fields.len() - 1];
+	let borrow_mut_vis = &iter::repeat(quote!()).take(fields.len() - 1).chain(Some(quote!(pub))).collect::<Vec<_>>();
 
 	let struct_rlt_params = &struct_rlt_args.iter().zip(struct_rlt_args.iter().skip(1)).map(|(rlt_arg, next_rlt_arg)| {
 		syn::LifetimeDef {
@@ -301,21 +302,21 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		quote!(
 			#[allow(non_camel_case_types, non_snake_case, dead_code)]
 			#item_vis struct #borrow_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_where_clause {
-				#(#local_idents: #borrow_tys,)*
+				#(#borrow_mut_vis #local_idents: #borrow_tys,)*
 			}
 		).to_tokens(tokens);
 	}
 
 	quote!(
+		#[allow(non_camel_case_types, non_snake_case, dead_code)]
+		#item_vis struct #borrow_mut_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_where_clause {
+			#(#borrow_mut_vis #local_idents: #borrow_mut_tys,)*
+		}
+
 		impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_impl_params __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
 			type Borrow = #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
 			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args),* #(#struct_ty_args),*>;
 			type Prefix = ();
-		}
-
-		#[allow(non_camel_case_types, non_snake_case, dead_code)]
-		#item_vis struct #borrow_mut_ident<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_where_clause {
-			#(#local_idents: #borrow_mut_tys,)*
 		}
 
 		#[allow(dead_code, unused_mut, unused_unsafe)]
