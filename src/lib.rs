@@ -160,9 +160,12 @@ impl<'a> B<'a> {
 }
 
 pub fn test() {
-	use rental_mod::Foo;
+	use rental_mod::{Foo, Bar};
 
 	let a = A { i: 5 };
+	let foo = Foo::new(Box::new(a), |a| a.borrow());
+
+	let bar = Bar::new(Box::new(foo), |fb| fb.b.borrow_again());
 }
 
 
@@ -174,15 +177,16 @@ rental!{
 		#[rental]
 		pub struct Foo {
 			a: Box<A>,
-			b: Box<B<'a>>,
-			c: C<'a, 'b>,
+			b: B<'a>,
+			//b: Box<B<'a>>,
+			//c: C<'a, 'b>,
 		}
 
-//		#[rental]
-//		pub struct Bar {
-//			#[subrental(arity = 2)]
-//			a: Box<Foo>,
-//			c: C<'a_0, 'a_1>,
-//		}
+		#[rental]
+		pub struct Bar {
+			#[subrental(arity = 2)]
+			a: Box<Foo>,
+			c: C<'a_0, 'a_1>,
+		}
 	}
 }
