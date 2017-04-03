@@ -280,6 +280,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let suffix_try_closure_bounds = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref try_bound, ..}| try_bound).collect::<Vec<_>>();
 	let suffix_try_closure_exprs = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref try_expr, ..}| try_expr).collect::<Vec<_>>();
 	let tail_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
+	let tail_rlt_arg = &tail_rlt_args[tail_rlt_args.len() - 1];
 
 	if !is_rental_mut {
 		quote!(
@@ -293,6 +294,13 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				pub fn rent_all<__F, __R>(&self, f: __F) -> __R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
+				{
+					f(unsafe { self.borrow() })
+				}
+
+				pub fn rent_all_ref<__F, __R>(&self, f: __F) -> &__R where
+					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> &#tail_rlt_arg __R,
+					__R: 'static //#(#struct_lt_args +)*,
 				{
 					f(unsafe { self.borrow() })
 				}
@@ -379,6 +387,20 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			pub fn rent_mut<__F, __R>(&mut self, f: __F) -> __R where
 				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
+			{
+				f(#borrow_mut_tail_expr)
+			}
+
+			pub fn rent_ref<__F, __R>(&self, f: __F) -> &__R where
+				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> &#tail_rlt_arg __R,
+				__R: 'static //#(#struct_lt_args +)*,
+			{
+				f(#borrow_tail_expr)
+			}
+
+			pub fn rent_ref_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
+				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> &#tail_rlt_arg  mut __R,
+				__R: 'static //#(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_tail_expr)
 			}
@@ -509,10 +531,10 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 					//quote!(&#field_rlt_arg #field_ty)
 					quote!(&#field_rlt_arg #field_ty_hack)
 				} else {
+					//quote!(&#field_rlt_arg mut #field_ty)
 					quote!(&#field_rlt_arg mut #field_ty_hack)
 				},
 				new_expr: if !is_rental_mut {
-					//quote!(&#field_rlt_arg #field_ty)
 					quote!(& #deref #field_ident)
 				} else {
 					quote!(&mut #deref #field_ident)

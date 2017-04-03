@@ -1,3 +1,4 @@
+#![feature(manually_drop)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
@@ -7,7 +8,6 @@ extern crate rental_impl;
 extern crate stable_deref_trait;
 
 pub use rental_impl::*;
-
 
 #[doc(hidden)]
 pub mod __rental_prelude {
@@ -29,7 +29,6 @@ pub mod __rental_prelude {
 	pub trait Rental6<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5> { type Borrow; type BorrowMut; type Prefix; }
 	pub trait Rental7<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6> { type Borrow; type BorrowMut; type Prefix; }
 	pub trait Rental8<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7> { type Borrow; type BorrowMut; type Prefix; }
-
 	pub trait Rental9<
 		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
 		'a8
