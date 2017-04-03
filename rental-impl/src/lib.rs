@@ -14,7 +14,28 @@ use quote::ToTokens;
 define_proc_macros! {
 	#[doc(hidden)]
 	#[allow(non_snake_case)]
-	pub fn __rental_impl(input: &str) -> String {
+	pub fn __rental_traits(input: &str) -> String {
+		let mut tokens = quote::Tokens::new();
+
+		for item in syn::parse_items(input).expect("Failed to parse items in module body.") {
+			match item.node {
+				syn::ItemKind::Use(..) => {
+					item.to_tokens(&mut tokens);
+				},
+				syn::ItemKind::Struct(..) => {
+					write_rental_struct_and_impls(&mut tokens, &item);
+				},
+				_ => panic!("Item must be a `use` or `struct`."),
+			}
+		}
+
+		tokens.to_string()
+	}
+
+
+	#[doc(hidden)]
+	#[allow(non_snake_case)]
+	pub fn __rental_structs_and_impls(input: &str) -> String {
 		let mut tokens = quote::Tokens::new();
 
 		for item in syn::parse_items(input).expect("Failed to parse items in module body.") {
@@ -231,7 +252,8 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let struct_ty_params = &struct_generics.ty_params;
 	let struct_lt_args = &struct_lt_params.iter().map(|lt_def| &lt_def.lifetime).collect::<Vec<_>>();
 	let struct_ty_args = &struct_ty_params.iter().map(|ty_param| &ty_param.ident).collect::<Vec<_>>();
-	let struct_fake_rlt_args = &iter::repeat(syn::Lifetime::new("'__a")).take(struct_rlt_args.len()).collect::<Vec<_>>();
+	let struct_fake_rlt_arg = &syn::Lifetime::new("'__a");
+	let struct_fake_rlt_args = &iter::repeat(struct_fake_rlt_arg).take(struct_rlt_args.len()).collect::<Vec<_>>();
 
 	let rental_trait_ident = syn::Ident::new(format!("Rental{}", struct_rlt_args.len()));
 	let field_idents = &fields.iter().map(|field| &field.name).collect::<Vec<_>>();
@@ -241,13 +263,13 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let borrow_mut_ident = syn::Ident::new(item.ident.to_string() + "_BorrowMut");
 	let borrow_quotes = &make_borrow_quotes(&fields, is_rental_mut);
 	let borrow_tys = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty, ..}| ty).collect::<Vec<_>>();
-	let borrow_tail_ty = &borrow_tys[fields.len() - 1];
+	let borrow_suffix_ty = &borrow_tys[fields.len() - 1];
 	let borrow_exprs = &borrow_quotes.iter().map(|&BorrowQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
-	let borrow_tail_expr = &borrow_exprs[fields.len() - 1];
+	let borrow_suffix_expr = &borrow_exprs[fields.len() - 1];
 	let borrow_mut_tys = &borrow_quotes.iter().map(|&BorrowQuotes{ref mut_ty, ..}| mut_ty).collect::<Vec<_>>();
-	let borrow_mut_tail_ty = &borrow_mut_tys[fields.len() - 1];
+	let borrow_mut_suffix_ty = &borrow_mut_tys[fields.len() - 1];
 	let borrow_mut_exprs = &borrow_quotes.iter().map(|&BorrowQuotes{ref mut_expr, ..}| mut_expr).collect::<Vec<_>>();
-	let borrow_mut_tail_expr = &borrow_mut_exprs[fields.len() - 1];
+	let borrow_mut_suffix_expr = &borrow_mut_exprs[fields.len() - 1];
 	let borrow_mut_vis = &iter::repeat(quote!()).take(fields.len() - 1).chain(Some(quote!(pub))).collect::<Vec<_>>();
 
 	let struct_rlt_params = &struct_rlt_args.iter().zip(struct_rlt_args.iter().skip(1)).map(|(rlt_arg, next_rlt_arg)| {
@@ -271,16 +293,16 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let head_local_ident_rep = &iter::repeat(&head_local_ident).take(fields.len() - 1).collect::<Vec<_>>();
 	let head_ty = &fields[0].orig_ty;
 	let prefix_field_tys = &fields.iter().map(|field| &field.erased.ty).take(fields.len() - 1).collect::<Vec<_>>();
-	let suffix_field_tys = &fields.iter().map(|field| &field.erased.ty).skip(1).collect::<Vec<_>>();
-	let suffix_local_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
-	let suffix_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__F{}", field.name))).collect::<Vec<_>>();
-	let suffix_error_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__E{}", field.name))).collect::<Vec<_>>();
-	let suffix_closure_quotes = make_suffix_closure_quotes(&fields, borrow_quotes, suffix_error_tys, is_rental_mut);
-	let suffix_closure_bounds = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref bound, ..}| bound).collect::<Vec<_>>();
-	let suffix_closure_exprs = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
-	let suffix_try_closure_bounds = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref try_bound, ..}| try_bound).collect::<Vec<_>>();
-	let suffix_try_closure_exprs = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref try_expr, ..}| try_expr).collect::<Vec<_>>();
-	let tail_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
+	let tail_field_tys = &fields.iter().map(|field| &field.erased.ty).skip(1).collect::<Vec<_>>();
+	let tail_local_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
+	let tail_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__F{}", field.name))).collect::<Vec<_>>();
+	let tail_error_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__E{}", field.name))).collect::<Vec<_>>();
+	let tail_closure_quotes = make_tail_closure_quotes(&fields, borrow_quotes, tail_error_tys, is_rental_mut);
+	let tail_closure_bounds = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref bound, ..}| bound).collect::<Vec<_>>();
+	let tail_closure_exprs = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
+	let tail_try_closure_bounds = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref try_bound, ..}| try_bound).collect::<Vec<_>>();
+	let tail_try_closure_exprs = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref try_expr, ..}| try_expr).collect::<Vec<_>>();
+	let suffix_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
 
 	if !is_rental_mut {
 		quote!(
@@ -329,31 +351,31 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 
 		#[allow(dead_code, unused_mut, unused_unsafe)]
 		impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
-			pub fn new<#(#suffix_closure_tys),*>(
+			pub fn new<#(#tail_closure_tys),*>(
 				mut #head_local_ident: #head_ty,
-				#(#suffix_local_idents: #suffix_closure_tys),*
-			) -> Self where #(#suffix_closure_tys: #suffix_closure_bounds),*
+				#(#tail_local_idents: #tail_closure_tys),*
+			) -> Self where #(#tail_closure_tys: #tail_closure_bounds),*
 			{
 				#(__rental_prelude::static_assert_stable_deref::<#prefix_field_tys>();)*
 
-				#(let mut #suffix_local_idents = unsafe { __rental_prelude::transmute::<_, #suffix_field_tys>(#suffix_closure_exprs) };)*
+				#(let mut #tail_local_idents = unsafe { __rental_prelude::transmute::<_, #tail_field_tys>(#tail_closure_exprs) };)*
 
 				#item_ident {
 					#(#field_idents: #local_idents,)*
 				}
 			}
 
-			pub fn try_new<#(#suffix_closure_tys,)* #(#suffix_error_tys,)* __E>(
+			pub fn try_new<#(#tail_closure_tys,)* #(#tail_error_tys,)* __E>(
 				mut #head_local_ident: #head_ty,
-				#(#suffix_local_idents: #suffix_closure_tys),*
+				#(#tail_local_idents: #tail_closure_tys),*
 			) -> __rental_prelude::TryNewResult<Self, __E, #head_ty> where
-				#(#suffix_closure_tys: #suffix_try_closure_bounds,)*
-				#(#suffix_error_tys: __rental_prelude::Into<__E>,)*
+				#(#tail_closure_tys: #tail_try_closure_bounds,)*
+				#(#tail_error_tys: __rental_prelude::Into<__E>,)*
 			{
 				#(__rental_prelude::static_assert_stable_deref::<#prefix_field_tys>();)*
 
-				#(let mut #suffix_local_idents = {
-					let temp = #suffix_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute::<_, #suffix_field_tys>(t) });
+				#(let mut #tail_local_idents = {
+					let temp = #tail_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute::<_, #tail_field_tys>(t) });
 					match temp {
 						Ok(t) => t,
 						Err(e) => return Err(__rental_prelude::TryNewError(e.into(), #head_local_ident_rep)),
@@ -365,44 +387,44 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				})
 			}
 
-			pub unsafe fn borrow<'__a>(&'__a self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::Borrow {
+			pub unsafe fn borrow<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::Borrow {
 				#borrow_ident {
 					#(#local_idents: __rental_prelude::transmute(#borrow_exprs),)*
 				}
 			}
 
-			pub unsafe fn borrow_mut<'__a>(&'__a mut self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::BorrowMut {
+			pub unsafe fn borrow_mut<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg mut self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::BorrowMut {
 				#borrow_mut_ident {
 					#(#local_idents: __rental_prelude::transmute(#borrow_mut_exprs),)*
 				}
 			}
 
 			pub fn rent<__F, __R>(&self, f: __F) -> __R where
-				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> __R,
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
-				f(#borrow_tail_expr)
+				f(#borrow_suffix_expr)
 			}
 
 			pub fn rent_mut<__F, __R>(&mut self, f: __F) -> __R where
-				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> __R,
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
-				f(#borrow_mut_tail_expr)
+				f(#borrow_mut_suffix_expr)
 			}
 
 			pub fn ref_rent<__F, __R>(&self, f: __F) -> &__R where
-				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> &#last_rlt_arg __R,
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> &#last_rlt_arg __R,
 				__R: 'static //#(#struct_lt_args +)*,
 			{
-				f(#borrow_tail_expr)
+				f(#borrow_suffix_expr)
 			}
 
 			pub fn ref_rent_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
-				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> &#last_rlt_arg  mut __R,
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> &#last_rlt_arg  mut __R,
 				__R: 'static //#(#struct_lt_args +)*,
 			{
-				f(#borrow_mut_tail_expr)
+				f(#borrow_mut_suffix_expr)
 			}
 		}
 	).to_tokens(tokens);
@@ -474,21 +496,25 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow>)
 				},
+
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(unsafe { (#deref self.#field_ident).borrow() })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
+
 				mut_ty: if idx == fields.len() - 1 {
 					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut)
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut>)
 				},
+
 				mut_expr: if idx == fields.len() - 1 {
 					quote!(unsafe { (#deref self.#field_ident).borrow_mut() })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
+
 				new_ty: if !is_rental_mut  {
 					//quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow)
 					quote!(#borrow_ty_hack<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>)
@@ -517,6 +543,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
+
 				mut_ty: if idx == fields.len() - 1 {
 					quote!(&#field_rlt_arg mut #field_ty)
 				} else {
@@ -527,6 +554,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
+
 				new_ty: if !is_rental_mut {
 					//quote!(&#field_rlt_arg #field_ty)
 					quote!(&#field_rlt_arg #field_ty_hack)
@@ -545,11 +573,11 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 }
 
 
-fn make_suffix_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], suffix_error_tys: &[syn::Ident], is_rental_mut: bool) -> Vec<ClosureQuotes> {
+fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], tail_error_tys: &[syn::Ident], is_rental_mut: bool) -> Vec<ClosureQuotes> {
 	(1 .. fields.len()).map(|idx| {
 		let local_name = &fields[idx].name;
 		let field_ty = &fields[idx].orig_ty;
-		let error_ty = &suffix_error_tys[idx - 1];
+		let error_ty = &tail_error_tys[idx - 1];
 
 		if !is_rental_mut {
 			let prev_new_tys_reverse = &borrows[0 .. idx].iter().map(|b| &b.new_ty).rev().collect::<Vec<_>>();

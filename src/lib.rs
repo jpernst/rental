@@ -82,7 +82,7 @@ macro_rules! rental {
 			use $crate::__rental_prelude;
 
 			#[allow(unused)]
-			#[derive(__rental_impl)]
+			#[derive(__rental_structs_and_impls)]
 			enum ProceduralMasqueradeDummyType {
 				Input = (0, stringify!($($body)*)).0
 			}
@@ -100,7 +100,7 @@ macro_rules! rental {
 			use $crate::__rental_prelude;
 
 			#[allow(unused)]
-			#[derive(__rental_impl)]
+			#[derive(__rental_structs_and_impls)]
 			enum ProceduralMasqueradeDummyType {
 				Input = (0, stringify!($($body)*)).0
 			}
@@ -118,7 +118,7 @@ macro_rules! rental {
 			use $crate::__rental_prelude;
 
 			#[allow(unused)]
-			#[derive(__rental_impl)]
+			#[derive(__rental_structs_and_impls)]
 			enum ProceduralMasqueradeDummyType {
 				Input = (0, stringify!($($body)*)).0
 			}
@@ -169,7 +169,6 @@ pub fn test() {
 }
 
 
-
 rental!{
 	pub mod rental_mod {
 		use super::{A, B, C};
@@ -178,8 +177,6 @@ rental!{
 		pub struct Foo {
 			a: Box<A>,
 			b: B<'a>,
-			//b: Box<B<'a>>,
-			//c: C<'a, 'b>,
 		}
 
 		#[rental]
