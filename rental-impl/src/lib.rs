@@ -205,6 +205,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	if let Some(collide) = struct_rlt_args.iter().find(|rlt_arg| struct_generics.lifetimes.iter().any(|lt_def| lt_def.lifetime == ***rlt_arg)) {
 		panic!("Struct `{}` lifetime parameter `{}` collides with rental lifetime.", item.ident, collide.ident);
 	}
+	let last_rlt_arg = &struct_rlt_args[struct_rlt_args.len() - 1];
 
 	let rstruct = syn::Item{
 		ident: item.ident.clone(),
@@ -280,7 +281,6 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	let suffix_try_closure_bounds = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref try_bound, ..}| try_bound).collect::<Vec<_>>();
 	let suffix_try_closure_exprs = &suffix_closure_quotes.iter().map(|&ClosureQuotes{ref try_expr, ..}| try_expr).collect::<Vec<_>>();
 	let tail_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
-	let tail_rlt_arg = &tail_rlt_args[tail_rlt_args.len() - 1];
 
 	if !is_rental_mut {
 		quote!(
@@ -299,7 +299,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				}
 
 				pub fn ref_rent_all<__F, __R>(&self, f: __F) -> &__R where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> &#tail_rlt_arg __R,
+					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> &#last_rlt_arg __R,
 					__R: 'static //#(#struct_lt_args +)*,
 				{
 					f(unsafe { self.borrow() })
@@ -392,14 +392,14 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 			}
 
 			pub fn ref_rent<__F, __R>(&self, f: __F) -> &__R where
-				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> &#tail_rlt_arg __R,
+				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> &#last_rlt_arg __R,
 				__R: 'static //#(#struct_lt_args +)*,
 			{
 				f(#borrow_tail_expr)
 			}
 
 			pub fn ref_rent_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
-				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> &#tail_rlt_arg  mut __R,
+				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> &#last_rlt_arg  mut __R,
 				__R: 'static //#(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_tail_expr)
