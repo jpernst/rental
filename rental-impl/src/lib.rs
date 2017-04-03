@@ -298,7 +298,7 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 					f(unsafe { self.borrow() })
 				}
 
-				pub fn rent_all_ref<__F, __R>(&self, f: __F) -> &__R where
+				pub fn ref_rent_all<__F, __R>(&self, f: __F) -> &__R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> &#tail_rlt_arg __R,
 					__R: 'static //#(#struct_lt_args +)*,
 				{
@@ -391,14 +391,14 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 				f(#borrow_mut_tail_expr)
 			}
 
-			pub fn rent_ref<__F, __R>(&self, f: __F) -> &__R where
+			pub fn ref_rent<__F, __R>(&self, f: __F) -> &__R where
 				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_tail_ty) -> &#tail_rlt_arg __R,
 				__R: 'static //#(#struct_lt_args +)*,
 			{
 				f(#borrow_tail_expr)
 			}
 
-			pub fn rent_ref_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
+			pub fn ref_rent_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
 				__F: for<#(#tail_rlt_args,)*> FnOnce(#borrow_mut_tail_ty) -> &#tail_rlt_arg  mut __R,
 				__R: 'static //#(#struct_lt_args +)*,
 			{
