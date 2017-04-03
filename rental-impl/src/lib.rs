@@ -17,17 +17,8 @@ define_proc_macros! {
 	pub fn __rental_traits(input: &str) -> String {
 		let mut tokens = quote::Tokens::new();
 
-		for item in syn::parse_items(input).expect("Failed to parse items in module body.") {
-			match item.node {
-				syn::ItemKind::Use(..) => {
-					item.to_tokens(&mut tokens);
-				},
-				syn::ItemKind::Struct(..) => {
-					write_rental_struct_and_impls(&mut tokens, &item);
-				},
-				_ => panic!("Item must be a `use` or `struct`."),
-			}
-		}
+		let max_arity = input.parse::<usize>().expect("Input must be an integer literal.");
+		write_rental_traits(&mut tokens, max_arity);
 
 		tokens.to_string()
 	}
@@ -55,7 +46,27 @@ define_proc_macros! {
 }
 
 
-fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Item) {
+fn write_rental_traits(tokens: &mut quote::Tokens, max_arity: usize) {
+	let mut lt_params = vec![syn::LifetimeDef::new("'a0")];
+
+	for arity in 2 .. max_arity + 1 {
+		let trait_ident = &syn::Ident::new(format!("Rental{}", arity));
+		let lt_param = syn::LifetimeDef::new(format!("'a{}", arity - 1));
+		lt_params[arity - 2].bounds.push(lt_param.lifetime.clone());
+		lt_params.push(lt_param);
+
+		let lt_params_iter = &lt_params;
+		quote!(
+			pub trait #trait_ident<#(#lt_params_iter),*> {
+				type Borrow;
+				type BorrowMut;
+			}
+		).to_tokens(tokens);
+	}
+}
+
+
+fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	let (struct_data, struct_generics) = if let syn::ItemKind::Struct(ref struct_data, ref struct_generics) = item.node {
 		(struct_data, struct_generics)
 	} else {
@@ -218,10 +229,6 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 	}
 	let fields = rfields;
 
-//	if fields.iter().any(|field| field.subrental.is_some()) {
-//		panic!("Subrental fields are currently blocked on lazy-normalization.");
-//	}
-
 	let struct_rlt_args = &fields.iter().fold(Vec::new(), |mut rlt_args, field| { rlt_args.extend(field.self_rlt_args.iter()); rlt_args });
 	if let Some(collide) = struct_rlt_args.iter().find(|rlt_arg| struct_generics.lifetimes.iter().any(|lt_def| lt_def.lifetime == ***rlt_arg)) {
 		panic!("Struct `{}` lifetime parameter `{}` collides with rental lifetime.", item.ident, collide.ident);
@@ -346,7 +353,6 @@ fn write_rental_struct_and_impls(mut tokens: &mut quote::Tokens, item: &syn::Ite
 		impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_impl_params __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
 			type Borrow = #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
 			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args),* #(#struct_ty_args),*>;
-			type Prefix = ();
 		}
 
 		#[allow(dead_code, unused_mut, unused_unsafe)]

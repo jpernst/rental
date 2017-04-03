@@ -9,6 +9,18 @@ extern crate stable_deref_trait;
 
 pub use rental_impl::*;
 
+
+macro_rules! define_rental_traits {
+	($max_arity:expr) => {
+		#[allow(unused)]
+		#[derive(__rental_traits)]
+		enum ProceduralMasqueradeDummyType {
+			Input = (0, stringify!($max_arity)).0
+		}
+	};
+}
+
+
 #[doc(hidden)]
 pub mod __rental_prelude {
 	pub use core::marker::PhantomData;
@@ -22,45 +34,8 @@ pub mod __rental_prelude {
 	pub struct TryNewError<E, H> (pub E, pub H);
 	pub type TryNewResult<T, E, H> = Result<T, TryNewError<E, H>>;
 
-	pub trait Rental2<'a0: 'a1, 'a1> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental3<'a0: 'a1, 'a1: 'a2, 'a2> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental4<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental5<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental6<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental7<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental8<'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental9<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8
-	> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental10<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8: 'a9, 'a9
-	> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental11<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8: 'a9, 'a9: 'a10, 'a10
-	> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental12<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8: 'a9, 'a9: 'a10, 'a10: 'a11, 'a11
-	> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental13<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8: 'a9, 'a9: 'a10, 'a10: 'a11, 'a11: 'a12, 'a12
-	> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental14<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8: 'a9, 'a9: 'a10, 'a10: 'a11, 'a11: 'a12, 'a12: 'a13, 'a13
-	> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental15<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8: 'a9, 'a9: 'a10, 'a10: 'a11, 'a11: 'a12, 'a12: 'a13, 'a13: 'a14, 'a14
-	> { type Borrow; type BorrowMut; type Prefix; }
-	pub trait Rental16<
-		'a0: 'a1, 'a1: 'a2, 'a2: 'a3, 'a3: 'a4, 'a4: 'a5, 'a5: 'a6, 'a6: 'a7, 'a7: 'a8,
-		'a8: 'a9, 'a9: 'a10, 'a10: 'a11, 'a11: 'a12, 'a12: 'a13, 'a13: 'a14, 'a14: 'a15, 'a15
-	> { type Borrow; type BorrowMut; type Prefix; }
+
+	define_rental_traits!(32);
 
 
 	#[inline(always)]
