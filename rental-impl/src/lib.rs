@@ -75,6 +75,8 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 	let mut rattrs = item.attrs.clone();
 	let mut is_rental_mut = false;
+	let mut is_deref_suffix = false;
+	let mut is_deref_mut_suffix = false;
 	if let Some(rental_pos) = rattrs.iter().filter(|attr| !attr.is_sugared_doc).position(|attr| match attr.value {
 		syn::MetaItem::Word(ref attr_ident) => {
 			is_rental_mut = match attr_ident.as_ref() {
@@ -92,12 +94,26 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				_ => return false,
 			};
 
-			if nested.get(0).is_some() {
-				panic!(
-					"`{}` attribute on struct `{}` must have no arguments.",
+			match (nested.get(0), nested.get(1)) {
+				(
+					Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::Word(ref deref_suffix_name))),
+					None
+				) if deref_suffix_name == "deref_suffix" => {
+					is_deref_suffix = true;
+				},
+				(
+					Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::Word(ref deref_suffix_name))),
+					None
+				) if deref_suffix_name == "deref_mut_suffix" => {
+					is_deref_suffix = true;
+					is_deref_mut_suffix = true;
+				},
+				(None, None) => (),
+				_ => panic!(
+					"`{}` attribute on struct `{}` must have no arguments or optionally one of `deref_suffix`/`deref_mut_suffix`.",
 					if !is_rental_mut { "rental" } else { "rental_mut" },
 					item.ident
-				);
+				),
 			}
 
 			true
@@ -309,6 +325,8 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	let tail_closure_exprs = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
 	let tail_try_closure_bounds = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref try_bound, ..}| try_bound).collect::<Vec<_>>();
 	let tail_try_closure_exprs = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref try_expr, ..}| try_expr).collect::<Vec<_>>();
+	let suffix_field_ident = &field_idents[fields.len() - 1];
+	let suffix_field_ty = &fields[fields.len() - 1].erased.ty;
 	let suffix_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
 
 	if !is_rental_mut {
@@ -434,6 +452,92 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			}
 		}
 	).to_tokens(tokens);
+
+	if fields[fields.len() - 1].subrental.is_some() {
+		quote!(
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+				type Suffix = <#borrow_suffix_ty as IntoSuffix>::Suffix;
+
+				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+					let #borrow_ident{#suffix_field_ident: suffix, ..};
+					suffix.into_suffix()
+				}
+			}
+
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+				type Suffix = <#borrow_mut_suffix_ty as IntoSuffix>::Suffix;
+
+				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+					let #borrow_mut_ident{#suffix_field_ident: suffix, ..};
+					suffix.into_suffix()
+				}
+			}
+		).to_tokens(tokens);
+
+		if is_deref_suffix {
+			quote!(
+				impl #struct_impl_params __rental_prelude::Deref for #item_ident #struct_impl_args #struct_where_clause {
+					type Target = <#suffix_field_ty as __rental_prelude::Deref>::Target;
+
+					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
+						self.ref_rent(|suffix| &**suffix.into_suffix())
+					}
+				}
+			).to_tokens(tokens);
+		}
+
+		if is_deref_suffix {
+			quote!(
+				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
+					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
+						self.ref_rent_mut(|suffix| &mut **suffix.into_suffix())
+					}
+				}
+			).to_tokens(tokens);
+		}
+	} else {
+		quote!(
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+				type Suffix = #borrow_suffix_ty;
+
+				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+					let #borrow_ident{#suffix_field_ident: suffix, ..} = self;
+					suffix
+				}
+			}
+
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+				type Suffix = #borrow_mut_suffix_ty;
+
+				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+					let #borrow_mut_ident{#suffix_field_ident: suffix, ..} = self;
+					suffix
+				}
+			}
+		).to_tokens(tokens);
+
+		if is_deref_suffix {
+			quote!(
+				impl #struct_impl_params __rental_prelude::Deref for #item_ident #struct_impl_args #struct_where_clause {
+					type Target = <#suffix_field_ty as __rental_prelude::Deref>::Target;
+
+					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
+						self.ref_rent(|suffix| &**suffix)
+					}
+				}
+			).to_tokens(tokens);
+		}
+
+		if is_deref_mut_suffix {
+			quote!(
+				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
+					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
+						self.ref_rent_mut(|suffix| &mut **suffix)
+					}
+				}
+			).to_tokens(tokens);
+		}
+	}
 }
 
 

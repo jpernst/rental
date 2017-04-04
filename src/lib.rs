@@ -35,6 +35,13 @@ pub mod __rental_prelude {
 	pub type TryNewResult<T, E, H> = Result<T, TryNewError<E, H>>;
 
 
+	pub trait IntoSuffix {
+		type Suffix;
+
+		fn into_suffix(self) -> <Self as IntoSuffix>::Suffix;
+	}
+
+
 	define_rental_traits!(32);
 
 
@@ -110,6 +117,7 @@ pub struct B<'a> {
 }
 pub struct C<'a: 'b, 'b> {
 	b: &'b B<'a>,
+	x: i32
 }
 
 impl A {
@@ -130,9 +138,19 @@ impl<'a, 'b> Drop for C<'a, 'b> {
 
 impl<'a> B<'a> {
 	pub fn borrow_again<'b>(&'b self) -> C<'a, 'b> {
-		C { b: self }
+		C { b: self, x: 12 }
 	}
 }
+
+impl<'a: 'b, 'b> ::std::ops::Deref for C<'a, 'b> {
+	type Target = i32;
+
+	fn deref(&self) -> &i32 { &self.x }
+}
+impl<'a: 'b, 'b> ::std::ops::DerefMut for C<'a, 'b> {
+	fn deref_mut(&mut self) -> &mut i32 { &mut self.x }
+}
+
 
 pub fn test() {
 	use rental_mod::{Foo, Bar};
@@ -154,7 +172,7 @@ rental!{
 			b: B<'a>,
 		}
 
-		#[rental]
+		#[rental(deref_mut_suffix)]
 		pub struct Bar {
 			#[subrental(arity = 2)]
 			a: Box<Foo>,
