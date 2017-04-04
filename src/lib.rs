@@ -1,4 +1,3 @@
-#![feature(manually_drop)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
@@ -24,11 +23,12 @@ macro_rules! define_rental_traits {
 #[doc(hidden)]
 pub mod __rental_prelude {
 	pub use core::marker::PhantomData;
-	pub use core::ops::{Deref, DerefMut};
+	pub use core::ops::{Deref, DerefMut, Drop};
 	pub use core::convert::{AsRef, AsMut, Into};
 	pub use core::borrow::{Borrow, BorrowMut};
 	pub use core::mem::transmute;
 	pub use core::result::Result;
+	pub use core::option::Option;
 
 	pub use stable_deref_trait::StableDeref;
 
