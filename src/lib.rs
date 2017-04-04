@@ -25,9 +25,11 @@ macro_rules! define_rental_traits {
 pub mod __rental_prelude {
 	pub use core::marker::PhantomData;
 	pub use core::ops::{Deref, DerefMut};
-	pub use core::convert::Into;
+	pub use core::convert::{AsRef, AsMut, Into};
+	pub use core::borrow::{Borrow, BorrowMut};
 	pub use core::mem::transmute;
 	pub use core::result::Result;
+
 	pub use stable_deref_trait::StableDeref;
 
 

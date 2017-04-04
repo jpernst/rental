@@ -538,6 +538,38 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			).to_tokens(tokens);
 		}
 	}
+
+	if is_deref_suffix {
+		quote!(
+			impl #struct_impl_params __rental_prelude::AsRef<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
+				fn as_ref(&self) -> &<Self as __rental_prelude::Deref>::Target {
+					&**self
+				}
+			}
+
+			impl #struct_impl_params __rental_prelude::Borrow<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
+				fn borrow(&self) -> &<Self as __rental_prelude::Deref>::Target {
+					&**self
+				}
+			}
+		).to_tokens(tokens);
+	}
+
+	if is_deref_mut_suffix {
+		quote!(
+			impl #struct_impl_params __rental_prelude::AsMut<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
+				fn as_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
+					&mut **self
+				}
+			}
+
+			impl #struct_impl_params __rental_prelude::BorrowMut<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
+				fn borrow_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
+					&mut **self
+				}
+			}
+		).to_tokens(tokens);
+	}
 }
 
 
