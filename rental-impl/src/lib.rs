@@ -57,7 +57,8 @@ fn write_rental_traits(tokens: &mut quote::Tokens, max_arity: usize) {
 
 		let lt_params_iter = &lt_params;
 		quote!(
-			pub trait #trait_ident<#(#lt_params_iter),*> {
+			#[doc(hidden)]
+			pub unsafe trait #trait_ident<#(#lt_params_iter),*> {
 				type Borrow;
 				type BorrowMut;
 			}
@@ -370,7 +371,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			#(#borrow_mut_vis #local_idents: #borrow_mut_tys,)*
 		}
 
-		impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_impl_params __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
+		unsafe impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_impl_params __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
 			type Borrow = #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
 			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args),* #(#struct_ty_args),*>;
 		}
@@ -463,7 +464,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 	if fields[fields.len() - 1].subrental.is_some() {
 		quote!(
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
 				type Suffix = <#borrow_suffix_ty as IntoSuffix>::Suffix;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
@@ -472,7 +473,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
 				type Suffix = <#borrow_mut_suffix_ty as IntoSuffix>::Suffix;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
@@ -505,7 +506,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		}
 	} else {
 		quote!(
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
 				type Suffix = #borrow_suffix_ty;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
@@ -514,7 +515,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix  for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
 				type Suffix = #borrow_mut_suffix_ty;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
@@ -555,11 +556,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
-			impl #struct_impl_params __rental_prelude::Borrow<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
-				fn borrow(&self) -> &<Self as __rental_prelude::Deref>::Target {
-					&**self
-				}
-			}
+//			impl #struct_impl_params __rental_prelude::Borrow<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
+//				fn borrow(&self) -> &<Self as __rental_prelude::Deref>::Target {
+//					&**self
+//				}
+//			}
 		).to_tokens(tokens);
 	}
 
@@ -571,11 +572,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
-			impl #struct_impl_params __rental_prelude::BorrowMut<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
-				fn borrow_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
-					&mut **self
-				}
-			}
+//			impl #struct_impl_params __rental_prelude::BorrowMut<<Self as __rental_prelude::Deref>::Target> for #item_ident #struct_impl_args #struct_where_clause {
+//				fn borrow_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
+//					&mut **self
+//				}
+//			}
 		).to_tokens(tokens);
 	}
 }
@@ -815,5 +816,125 @@ impl<'a> syn::fold::Folder for RentalLifetimeEraser<'a> {
 		} else {
 			lifetime
 		}
+	}
+}
+
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+
+	fn test_write(item: quote::Tokens) {
+		let mut tokens = quote::Tokens::new();
+
+		if let Ok(item) = syn::parse_item(&item.to_string()) {
+			write_rental_struct_and_impls(&mut tokens, &item);
+		}
+	}
+
+
+	#[test]
+	#[should_panic(expected = "must have a `rental` or `rental_mut` attribute")]
+	fn no_rental_attrib() {
+		test_write(quote! {
+			pub struct Foo {
+				a: Box<i32>,
+				b: &'a i32,
+			}
+		});
+	}
+
+
+	#[test]
+	#[should_panic(expected = "must have no arguments or optionally one of")]
+	fn unknown_rental_attrib() {
+		test_write(quote! {
+			#[rental(foo)]
+			pub struct Foo {
+				a: Box<i32>,
+				b: &'a i32,
+			}
+		});
+	}
+
+
+	#[test]
+	#[should_panic(expected = "must not have attributes other than")]
+	fn struct_other_attrib() {
+		test_write(quote! {
+			#[rental]
+			#[other]
+			pub struct Foo {
+				a: Box<i32>,
+				b: &'a i32,
+			}
+		});
+	}
+
+
+	#[test]
+	#[should_panic(expected = "must have at least 2 fields")]
+	fn only_one_field() {
+		test_write(quote! {
+			#[rental]
+			pub struct Foo {
+				a: Box<i32>,
+			}
+		});
+	}
+
+
+	#[test]
+	#[should_panic(expected = "must be private")]
+	fn pub_field() {
+		test_write(quote! {
+			#[rental]
+			pub struct Foo {
+				pub a: Box<i32>,
+				pub b: &'a i32,
+			}
+		});
+	}
+
+
+	#[test]
+	#[should_panic(expected = "expects `arity = ")]
+	fn no_arity() {
+		test_write(quote! {
+			#[rental]
+			pub struct Foo {
+				#[subrental]
+				a: Box<i32>,
+				b: &'a i32,
+			}
+		});
+	}
+
+
+	#[test]
+	#[should_panic(expected = "must not have attributes other than")]
+	fn field_other_attrib() {
+		test_write(quote! {
+			#[rental]
+			pub struct Foo {
+				#[other]
+				a: Box<i32>,
+				b: &'a i32,
+			}
+		});
+	}
+
+
+	#[test]
+	#[should_panic(expected = "collides with rental lifetime")]
+	fn rental_lifetime_collide() {
+		test_write(quote! {
+			#[rental]
+			pub struct Foo<'a> {
+				a: Box<i32>,
+				b: &'a i32,
+			}
+		});
 	}
 }

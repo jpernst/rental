@@ -9,6 +9,17 @@ extern crate stable_deref_trait;
 pub use rental_impl::*;
 
 
+pub trait IntoSuffix {
+	type Suffix;
+
+	fn into_suffix(self) -> <Self as IntoSuffix>::Suffix;
+}
+
+
+pub struct TryNewError<E, H> (pub E, pub H);
+pub type TryNewResult<T, E, H> = Result<T, TryNewError<E, H>>;
+
+
 macro_rules! define_rental_traits {
 	($max_arity:expr) => {
 		#[allow(unused)]
@@ -29,19 +40,9 @@ pub mod __rental_prelude {
 	pub use core::mem::transmute;
 	pub use core::result::Result;
 	pub use core::option::Option;
-
 	pub use stable_deref_trait::StableDeref;
 
-
-	pub struct TryNewError<E, H> (pub E, pub H);
-	pub type TryNewResult<T, E, H> = Result<T, TryNewError<E, H>>;
-
-
-	pub trait IntoSuffix {
-		type Suffix;
-
-		fn into_suffix(self) -> <Self as IntoSuffix>::Suffix;
-	}
+	pub use super::{IntoSuffix, TryNewError, TryNewResult};
 
 
 	define_rental_traits!(32);
@@ -154,31 +155,37 @@ impl<'a: 'b, 'b> ::std::ops::DerefMut for C<'a, 'b> {
 }
 
 
-pub fn test() {
-	use rental_mod::{Foo, Bar};
-
-	let a = A { i: 5 };
-	let foo = Foo::new(Box::new(a), |a| a.borrow());
-
-	let bar = Bar::new(Box::new(foo), |fb| fb.b.borrow_again());
-}
+//pub fn test() {
+//	use rental_mod::{Foo, Bar};
+//
+//	let a = A { i: 5 };
+//	let foo = Foo::new(Box::new(a), |a| a.borrow());
+//
+//	let bar = Bar::new(Box::new(foo), |fb| fb.b.borrow_again());
+//}
 
 
 rental!{
 	pub mod rental_mod {
 		use super::{A, B, C};
 
-		#[rental]
+		#[rental(deref_suffix)]
 		pub struct Foo {
 			a: Box<A>,
-			b: B<'a>,
+			b: &'a i32,
 		}
 
-		#[rental(deref_mut_suffix)]
-		pub struct Bar {
-			#[subrental(arity = 2)]
-			a: Box<Foo>,
-			c: C<'a_0, 'a_1>,
-		}
+//		#[rental]
+//		pub struct Foo {
+//			a: Box<A>,
+//			b: B<'a>,
+//		}
+//
+//		#[rental(deref_mut_suffix)]
+//		pub struct Bar {
+//			#[subrental(arity = 2)]
+//			a: Box<Foo>,
+//			c: C<'a_0, 'a_1>,
+//		}
 	}
 }
