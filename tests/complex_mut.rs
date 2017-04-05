@@ -67,7 +67,7 @@ rental! {
 #[test]
 fn new() {
 	let foo = Foo { i: 5 };
-	let cm = rentals::ComplexRent::new(
+	let _ = rentals::ComplexRent::new(
 		Box::new(foo),
 		|foo| Box::new(foo.borrow_mut()),
 		|bar| Box::new(bar.borrow_mut()),

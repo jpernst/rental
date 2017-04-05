@@ -28,7 +28,7 @@ rental! {
 #[test]
 fn new() {
 	let foo = Foo { i: 5 };
-	let sr = rentals::SimpleRef::new(Box::new(foo), |foo| &foo.i);
+	let _ = rentals::SimpleRef::new(Box::new(foo), |foo| &foo.i);
 
 	let foo = Foo { i: 5 };
 	let sr: rental::TryNewResult<_, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| foo.try_borrow());

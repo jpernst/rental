@@ -28,7 +28,7 @@ rental! {
 #[test]
 fn new() {
 	let foo = Foo { i: 5 };
-	let sm = rentals::SimpleMut::new(Box::new(foo), |foo| &mut foo.i);
+	let _ = rentals::SimpleMut::new(Box::new(foo), |foo| &mut foo.i);
 
 	let foo = Foo { i: 5 };
 	let sm: rental::TryNewResult<_, (), _> = rentals::SimpleMut::try_new(Box::new(foo), |foo| foo.try_borrow_mut());

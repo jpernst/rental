@@ -3,15 +3,15 @@ extern crate rental;
 
 
 pub struct Foo {
-	i: i32,
+	pub i: i32,
 }
 
 pub struct Bar<'a> {
-	foo: &'a Foo,
+	pub foo: &'a Foo,
 }
 
 pub struct Qux<'a: 'b, 'b> {
-	bar: &'b Bar<'a>,
+	pub bar: &'b Bar<'a>,
 }
 
 
@@ -52,7 +52,7 @@ rental! {
 fn new() {
 	let foo = Foo { i: 5 };
 	let sub = rentals::Sub::new(Box::new(foo), |foo| foo.borrow());
-	let rent = rentals::Rent::new(Box::new(sub), |sub| sub.bar.borrow());
+	let _ = rentals::Rent::new(Box::new(sub), |sub| sub.bar.borrow());
 
 	let foo = Foo { i: 5 };
 	let sub = rentals::Sub::new(Box::new(foo), |foo| foo.borrow());
@@ -70,5 +70,5 @@ fn new() {
 fn read() {
 	let foo = Foo { i: 5 };
 	let sub = rentals::Sub::new(Box::new(foo), |foo| foo.borrow());
-	let rent = rentals::Rent::new(Box::new(sub), |sub| sub.bar.borrow());
+	let _ = rentals::Rent::new(Box::new(sub), |sub| sub.bar.borrow());
 }
