@@ -380,9 +380,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
 		#borrow_mut_struct
 
-		unsafe impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #struct_impl_params __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
+		unsafe impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
 			type Borrow = #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
-			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args),* #(#struct_ty_args),*>;
+			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
 		}
 
 		#[allow(dead_code, unused_mut, unused_unsafe)]
@@ -494,7 +494,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 	if fields[fields.len() - 1].subrental.is_some() {
 		quote!(
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = <#borrow_suffix_ty as IntoSuffix>::Suffix;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
@@ -503,7 +503,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = <#borrow_mut_suffix_ty as IntoSuffix>::Suffix;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
@@ -536,7 +536,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		}
 	} else {
 		quote!(
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = #borrow_suffix_ty;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
@@ -545,7 +545,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
-			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_params),*> #struct_where_clause {
+			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = #borrow_mut_suffix_ty;
 
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
