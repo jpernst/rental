@@ -668,8 +668,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				if let syn::PathSegment{ref ident, parameters: syn::PathParameters::AngleBracketed(ref params)} = ty_path.segments[ty_path.segments.len() - 1] {
 					if params.types.len() == 1 {
 						if ident == "Vec" {
-							let ty = &params.types[0];
-							syn::parse_type(&quote!([#ty]).to_string()).unwrap()
+							syn::Ty::Slice(Box::new(params.types[0].clone()))
 						} else {
 							params.types[0].clone()
 						}
