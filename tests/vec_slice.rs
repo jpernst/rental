@@ -22,7 +22,7 @@ rental! {
 #[test]
 fn new() {
 	let vec = vec![1, 2, 3];
-	let rvec = rent_vec_slice::OwnedSlice::new(vec, |slice| slice);
+	let _ = rent_vec_slice::OwnedSlice::new(vec, |slice| slice);
 }
 
 
