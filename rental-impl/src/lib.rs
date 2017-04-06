@@ -130,7 +130,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		panic!("Struct `{}` must have a `rental` or `rental_mut` attribute.", item.ident);
 	}
 
-	if rattrs.iter().any(|attr| !attr.is_sugared_doc) {
+	if rattrs.iter().any(|attr| match attr.value { syn::MetaItem::NameValue(ref ident, ..) if ident == "doc" => false, _ => true }) {
 		panic!("Struct `{}` must not have attributes other than `rental` or `rental_mut`.", item.ident);
 	}
 
@@ -193,7 +193,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			rfattrs.remove(sr_pos);
 		}
 
-		if rfattrs.iter().any(|attr| !attr.is_sugared_doc) {
+		if rfattrs.iter().any(|attr| match attr.value { syn::MetaItem::NameValue(ref ident, ..) if ident == "doc" => false, _ => true }) {
 			panic!(
 				"Struct `{}` field `{}` must not have attributes other than `subrental`.",
 				item.ident,
@@ -306,10 +306,10 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	let head_ty = &fields[0].orig_ty;
 	let prefix_field_tys = &fields.iter().map(|field| &field.erased.ty).take(fields.len() - 1).collect::<Vec<_>>();
 	let tail_field_tys = &fields.iter().map(|field| &field.erased.ty).skip(1).collect::<Vec<_>>();
+	let tail_field_idents_reverse = &field_idents.iter().skip(1).rev().collect::<Vec<_>>();
 	let tail_local_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
 	let tail_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__F{}", field.name))).collect::<Vec<_>>();
-	let tail_error_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__E{}", field.name))).collect::<Vec<_>>();
-	let tail_closure_quotes = make_tail_closure_quotes(&fields, borrow_quotes, tail_error_tys, is_rental_mut);
+	let tail_closure_quotes = make_tail_closure_quotes(&fields, borrow_quotes, is_rental_mut);
 	let tail_closure_bounds = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref bound, ..}| bound).collect::<Vec<_>>();
 	let tail_closure_exprs = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
 	let tail_try_closure_bounds = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref try_bound, ..}| try_bound).collect::<Vec<_>>();
@@ -401,12 +401,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
-			pub fn try_new<#(#tail_closure_tys,)* #(#tail_error_tys,)* __E>(
+			pub fn try_new<#(#tail_closure_tys,)* __E>(
 				mut #head_local_ident: #head_ty,
 				#(#tail_local_idents: #tail_closure_tys),*
 			) -> __rental_prelude::TryNewResult<Self, __E, #head_ty> where
 				#(#tail_closure_tys: #tail_try_closure_bounds,)*
-				#(#tail_error_tys: __rental_prelude::Into<__E>,)*
 			{
 				#(__rental_prelude::static_assert_stable_deref::<#prefix_field_tys>();)*
 
@@ -462,6 +461,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			{
 				f(#borrow_mut_suffix_expr)
 			}
+
+			pub fn into_head(mut self) -> #head_ty {
+				#(drop(self.#tail_field_idents_reverse.take());)*
+				self.#head_local_ident.take().unwrap()
+			}
 		}
 
 		impl #struct_impl_params __rental_prelude::Drop for #item_ident #struct_impl_args #struct_where_clause {
@@ -497,6 +501,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = <#borrow_suffix_ty as IntoSuffix>::Suffix;
 
+				#[allow(non_shorthand_field_patterns)]
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
 					let #borrow_ident{#suffix_field_ident: suffix, ..};
 					suffix.into_suffix()
@@ -506,6 +511,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = <#borrow_mut_suffix_ty as IntoSuffix>::Suffix;
 
+				#[allow(non_shorthand_field_patterns)]
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
 					let #borrow_mut_ident{#suffix_field_ident: suffix, ..};
 					suffix.into_suffix()
@@ -539,6 +545,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = #borrow_suffix_ty;
 
+				#[allow(non_shorthand_field_patterns)]
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
 					let #borrow_ident{#suffix_field_ident: suffix, ..} = self;
 					suffix
@@ -548,6 +555,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
 				type Suffix = #borrow_mut_suffix_ty;
 
+				#[allow(non_shorthand_field_patterns)]
 				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
 					let #borrow_mut_ident{#suffix_field_ident: suffix, ..} = self;
 					suffix
@@ -758,11 +766,10 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 }
 
 
-fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], tail_error_tys: &[syn::Ident], is_rental_mut: bool) -> Vec<ClosureQuotes> {
+fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], is_rental_mut: bool) -> Vec<ClosureQuotes> {
 	(1 .. fields.len()).map(|idx| {
 		let local_name = &fields[idx].name;
 		let field_ty = &fields[idx].orig_ty;
-		let error_ty = &tail_error_tys[idx - 1];
 
 		if !is_rental_mut {
 			let prev_new_tys_reverse = &borrows[0 .. idx].iter().map(|b| &b.new_ty).rev().collect::<Vec<_>>();
@@ -776,7 +783,7 @@ fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], ta
 			ClosureQuotes {
 				bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#(#prev_new_tys_reverse),*) -> #field_ty),
 				expr: quote!(#local_name(#(#prev_new_exprs_reverse),*)),
-				try_bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#(#prev_new_tys_reverse),*) -> __rental_prelude::Result<#field_ty, #error_ty>),
+				try_bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#(#prev_new_tys_reverse),*) -> __rental_prelude::Result<#field_ty, __E>),
 				try_expr: quote!(#local_name(#(#prev_new_exprs_reverse),*)),
 			}
 		} else {
@@ -787,7 +794,7 @@ fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], ta
 			ClosureQuotes {
 				bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#prev_new_ty) -> #field_ty),
 				expr: quote!(#local_name(#prev_new_expr)),
-				try_bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#prev_new_ty) -> __rental_prelude::Result<#field_ty, #error_ty>),
+				try_bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#prev_new_ty) -> __rental_prelude::Result<#field_ty, __E>),
 				try_expr: quote!(#local_name(#prev_new_expr)),
 			}
 		}

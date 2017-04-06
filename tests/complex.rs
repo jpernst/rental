@@ -76,7 +76,7 @@ fn new() {
 	);
 
 	let foo = Foo { i: 5 };
-	let cr: rental::TryNewResult<_, (), _> = rentals::ComplexRent::try_new(
+	let cr = rentals::ComplexRent::try_new(
 		Box::new(foo),
 		|foo| foo.try_borrow().map(|bar| Box::new(bar)),
 		|bar, _| bar.try_borrow().map(|baz| Box::new(baz)),
@@ -86,7 +86,7 @@ fn new() {
 	assert!(cr.is_ok());
 
 	let foo = Foo { i: 5 };
-	let cr: rental::TryNewResult<_, (), _> = rentals::ComplexRent::try_new(
+	let cr = rentals::ComplexRent::try_new(
 		Box::new(foo),
 		|foo| foo.try_borrow().map(|bar| Box::new(bar)),
 		|bar, _| bar.try_borrow().map(|baz| Box::new(baz)),

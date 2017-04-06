@@ -31,11 +31,11 @@ fn new() {
 	let _ = rentals::SimpleMut::new(Box::new(foo), |foo| &mut foo.i);
 
 	let foo = Foo { i: 5 };
-	let sm: rental::TryNewResult<_, (), _> = rentals::SimpleMut::try_new(Box::new(foo), |foo| foo.try_borrow_mut());
+	let sm = rentals::SimpleMut::try_new(Box::new(foo), |foo| foo.try_borrow_mut());
 	assert!(sm.is_ok());
 
 	let foo = Foo { i: 5 };
-	let sm: rental::TryNewResult<_, (), _> = rentals::SimpleMut::try_new(Box::new(foo), |foo| foo.fail_borrow_mut());
+	let sm = rentals::SimpleMut::try_new(Box::new(foo), |foo| foo.fail_borrow_mut());
 	assert!(sm.is_err());
 }
 

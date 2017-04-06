@@ -76,7 +76,7 @@ fn new() {
 	);
 
 	let foo = Foo { i: 5 };
-	let cm: rental::TryNewResult<_, (), _> = rentals::ComplexRent::try_new(
+	let cm = rentals::ComplexRent::try_new(
 		Box::new(foo),
 		|foo| foo.try_borrow_mut().map(|bar| Box::new(bar)),
 		|bar| bar.try_borrow_mut().map(|baz| Box::new(baz)),
@@ -86,7 +86,7 @@ fn new() {
 	assert!(cm.is_ok());
 
 	let foo = Foo { i: 5 };
-	let cm: rental::TryNewResult<_, (), _> = rentals::ComplexRent::try_new(
+	let cm = rentals::ComplexRent::try_new(
 		Box::new(foo),
 		|foo| foo.try_borrow_mut().map(|bar| Box::new(bar)),
 		|bar| bar.try_borrow_mut().map(|baz| Box::new(baz)),

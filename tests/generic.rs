@@ -31,11 +31,11 @@ fn new() {
 	let _ = rentals::SimpleRef::new(Box::new(foo), |foo| &foo.t);
 
 	let foo = Foo { t: 5 };
-	let sr: rental::TryNewResult<_, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| foo.try_borrow());
+	let sr = rentals::SimpleRef::try_new(Box::new(foo), |foo| foo.try_borrow());
 	assert!(sr.is_ok());
 
 	let foo = Foo { t: 5 };
-	let sr: rental::TryNewResult<_, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| foo.fail_borrow());
+	let sr = rentals::SimpleRef::try_new(Box::new(foo), |foo| foo.fail_borrow());
 	assert!(sr.is_err());
 }
 

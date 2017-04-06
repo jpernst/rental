@@ -56,12 +56,12 @@ fn new() {
 
 	let foo = Foo { i: 5 };
 	let sub = rentals::Sub::new(Box::new(foo), |foo| foo.borrow());
-	let rent: rental::TryNewResult<_, (), _> = rentals::Rent::try_new(Box::new(sub), |sub| sub.bar.try_borrow());
+	let rent = rentals::Rent::try_new(Box::new(sub), |sub| sub.bar.try_borrow());
 	assert!(rent.is_ok());
 
 	let foo = Foo { i: 5 };
 	let sub = rentals::Sub::new(Box::new(foo), |foo| foo.borrow());
-	let rent: rental::TryNewResult<_, (), _> = rentals::Rent::try_new(Box::new(sub), |sub| sub.bar.fail_borrow());
+	let rent = rentals::Rent::try_new(Box::new(sub), |sub| sub.bar.fail_borrow());
 	assert!(rent.is_err());
 }
 
