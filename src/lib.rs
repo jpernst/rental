@@ -354,3 +354,14 @@ rental! {
 		}
 	}
 }
+
+
+rental! {
+	pub mod rent_vec_slice {
+		#[rental(deref_suffix)]
+		pub struct OwnedSlice {
+			buffer: Vec<u8>,
+			slice: &'buffer [u8],
+		}
+	}
+}

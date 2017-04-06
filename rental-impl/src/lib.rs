@@ -473,7 +473,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn ref_rent<__F, __R>(&self, f: __F) -> &__R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> &#last_rlt_arg __R,
-				__R: 'static //#(#struct_lt_args +)*,
+				__R: 'static + ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_suffix_expr)
 			}
@@ -483,7 +483,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn ref_rent_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> &#last_rlt_arg  mut __R,
-				__R: 'static //#(#struct_lt_args +)*,
+				__R: 'static + ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_suffix_expr)
 			}
@@ -521,7 +521,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn ref_rent_all<__F, __R>(&self, f: __F) -> &__R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> &#last_rlt_arg __R,
-					__R: 'static //#(#struct_lt_args +)*,
+					__R: 'static + ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { self.borrow() })
 				}
@@ -665,9 +665,14 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 
 		let field_ty_hack = if idx < fields.len() - 1 {
 			if let syn::Ty::Path(_, ref ty_path) = fields[idx].orig_ty {
-				if let syn::PathParameters::AngleBracketed(ref params) = ty_path.segments[ty_path.segments.len() - 1].parameters {
+				if let syn::PathSegment{ref ident, parameters: syn::PathParameters::AngleBracketed(ref params)} = ty_path.segments[ty_path.segments.len() - 1] {
 					if params.types.len() == 1 {
-						&params.types[0]
+						if ident == "Vec" {
+							let ty = &params.types[0];
+							syn::parse_type(&quote!([#ty]).to_string()).unwrap()
+						} else {
+							params.types[0].clone()
+						}
 					} else {
 						panic!("Field `{}` must have 1 type parameter.", fields[idx].name)
 					}
@@ -678,7 +683,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				panic!("Field `{}` must be a type path.", fields[idx].name)
 			}
 		} else {
-			&fields[idx].orig_ty
+			fields[idx].orig_ty.clone()
 		};
 
 		if let Some(ref subrental) = fields[idx].subrental {
@@ -686,7 +691,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 			let rental_trait_ident = &subrental.rental_trait_ident;
 			let field_rlt_args = &fields[idx].self_rlt_args;
 
-			let (borrow_ty_hack, borrow_mut_ty_hack, field_lt_args, field_ty_args) = if let syn::Ty::Path(ref qself, ref ty_path) = *field_ty_hack {
+			let (borrow_ty_hack, borrow_mut_ty_hack, field_lt_args, field_ty_args) = if let syn::Ty::Path(ref qself, ref ty_path) = field_ty_hack {
 				let seg_idx = ty_path.segments.len() - 1;
 				if let syn::PathParameters::AngleBracketed(ref params) = ty_path.segments[seg_idx].parameters {
 					let ty_name = &ty_path.segments[seg_idx].ident.as_ref();

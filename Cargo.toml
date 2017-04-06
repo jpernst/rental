@@ -17,5 +17,5 @@ default = ["std"]
 std = ["stable_deref_trait/std"]
 
 [dependencies]
-rental-impl = "0.4.0"
+rental-impl = "=0.4.1"
 stable_deref_trait = { version = "1.0.0", default-features = false }
