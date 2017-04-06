@@ -1,4 +1,4 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 
 extern crate proc_macro;
 #[macro_use]
@@ -374,9 +374,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	quote!(
 		#rstruct
 
+		/// Shared borrow of a rental struct.
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
 		#borrow_struct
 
+		/// Mutable borrow of a rental struct.
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
 		#borrow_mut_struct
 
@@ -387,6 +389,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 		#[allow(dead_code, unused_mut, unused_unsafe)]
 		impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
+			/// Create a new instance of the rental struct.
+			///
+			/// The first argument provided is the head, followed by a series of closures, one for each tail field. Each of these closures will receive, as its arguments, a borrow of the previous field, followed by borrows of the remaining prefix fields if the struct is a shared rental. If the struct is a mutable rental, only the immediately preceding field is passed.
 			pub fn new<#(#tail_closure_tys),*>(
 				mut #head_local_ident: #head_ty,
 				#(#tail_local_idents: #tail_closure_tys),*
@@ -401,6 +406,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				}
 			}
 
+			/// Attempt to create a new instance of the rental struct.
+			///
+			/// As `new`, but each closure returns a `Result`. If the result is an error, execution is short-circuited and the error is returned to you, along with the original head value.
 			pub fn try_new<#(#tail_closure_tys,)* __E>(
 				mut #head_local_ident: #head_ty,
 				#(#tail_local_idents: #tail_closure_tys),*
@@ -422,18 +430,27 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				})
 			}
 
+			/// Return direct shared borrows of the fields of the struct.
+			///
+			/// This is unsafe because the erased lifetimes are exposed. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
 			pub unsafe fn borrow<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::Borrow {
 				#borrow_ident {
 					#(#local_idents: __rental_prelude::transmute(#borrow_exprs),)*
 				}
 			}
 
+			/// Return a direct mutable borrow of the suffix of the struct.
+			///
+			/// This is unsafe because the erased lifetimes are exposed. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
 			pub unsafe fn borrow_mut<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg mut self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::BorrowMut {
 				#borrow_mut_ident {
 					#(#local_idents: __rental_prelude::transmute(#borrow_mut_exprs),)*
 				}
 			}
 
+			/// Execute a closure on the shared suffix of the struct.
+			///
+			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
 			pub fn rent<__F, __R>(&self, f: __F) -> __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
@@ -441,6 +458,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				f(#borrow_suffix_expr)
 			}
 
+			/// Execute a closure on the mutable suffix of the struct.
+			///
+			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
 			pub fn rent_mut<__F, __R>(&mut self, f: __F) -> __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
@@ -448,6 +468,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				f(#borrow_mut_suffix_expr)
 			}
 
+			/// Return a reference from the shared suffix of the struct.
+			///
+			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn ref_rent<__F, __R>(&self, f: __F) -> &__R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> &#last_rlt_arg __R,
 				__R: 'static //#(#struct_lt_args +)*,
@@ -455,6 +478,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				f(#borrow_suffix_expr)
 			}
 
+			/// Return a reference from the mutable suffix of the struct.
+			///
+			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn ref_rent_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> &#last_rlt_arg  mut __R,
 				__R: 'static //#(#struct_lt_args +)*,
@@ -462,6 +488,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				f(#borrow_mut_suffix_expr)
 			}
 
+			/// Drop the rental struct and return the original head value to you.
 			pub fn into_head(mut self) -> #head_ty {
 				#(drop(self.#tail_field_idents_reverse.take());)*
 				self.#head_local_ident.take().unwrap()
@@ -479,6 +506,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		quote!(
 			#[allow(dead_code)]
 			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
+				/// Execute a closure on shared borrows of the fields of the struct.
+				///
+				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
 				pub fn rent_all<__F, __R>(&self, f: __F) -> __R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
@@ -486,6 +516,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 					f(unsafe { self.borrow() })
 				}
 
+				/// Return a reference from shared borrows of the fields of the struct.
+				///
+				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn ref_rent_all<__F, __R>(&self, f: __F) -> &__R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> &#last_rlt_arg __R,
 					__R: 'static //#(#struct_lt_args +)*,
