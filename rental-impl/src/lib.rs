@@ -672,11 +672,13 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 						} else {
 							params.types[0].clone()
 						}
+					} else if ident == "String" && params.types.len() == 0 {
+						syn::parse_type("str").unwrap()
 					} else {
-						panic!("Field `{}` must have 1 type parameter.", fields[idx].name)
+						panic!("Field `{}` must have an angle-bracketed type parameter or be `String`.", fields[idx].name)
 					}
 				} else {
-					panic!("Field `{}` must have angle-bracketed params.", fields[idx].name)
+					panic!("Field `{}` must have an angle-bracketed parameter or be `String`.", fields[idx].name)
 				}
 			} else {
 				panic!("Field `{}` must be a type path.", fields[idx].name)
