@@ -279,6 +279,7 @@ macro_rules! rental {
 }
 
 
+#[cfg(feature = "std")]
 rental! {
 	/// Example instantiations that demonstrate the API provided by the types this crate generates.
 	pub mod examples {

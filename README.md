@@ -2,49 +2,75 @@
 
 [Documentation](http://docs.rs/rental)
 
-It can sometimes occur in the course of designing an API that you find yourself in a situation where you need to store, in a single struct, both an owned value and a borrow of that value. Rust's concept of ownership and borrowing is quite flexible, but can't quite express such a scenario.
+# Overview
+It can sometimes occur in the course of designing an API that it would be convenient, or even necessary, to allow fields within a struct to hold references to other fields within that same struct. Rust's concept of ownership and borrowing is quite flexible, but can't quite express such a scenario yet.
 
-This crate uses the term "rental" to describe this concept of a borrow that co-exsists with its owner in the same struct. The borrow itself is called the "rented" type. The "owner", naturally, is the item in the struct that owns the borrow.
+Creating such a struct manually requires unsafe code to erase lifetime parameters from the field types. Accessing such a field directly would be completely unsafe as a result. This library addresses the issue by allowing access to the internal fields only under carefully controlled circumstances, through closures that are bounded by generic lifetimes to prevent infiltration or exfiltration of any data with an incorrect lifetime.
 
-The API consists of the `rental` macro, which generates rental structs, and a few premade instantiations of this macro handling rented bare references.  If you only need to rent references, see `RentRef` and `RentMut`, as well as the associated type aliases for common rental scenarios. The documentation for the `rental` macro describes the kinds of items that can be generated. 
+# Use Cases
+One instance where this crate is useful is when working with [`libloading`](https://crates.io/crates/libloading). That crate provides a `Library` struct that defines methods to borrow `Symbol`s from it. These symbols are bounded by the lifetime of the library, and are thus considered a borrow. Under normal circumstances, one would be unable to store both the library and the symbols within a single struct, but the macro defined in this crate allows you to define a struct that is capable of storing both simultaneously, like so:
 
-One example might be `libloading`. That crate provides a `Library` struct that defines methods to borrow `Symbol`s from it. These symbols are bounded by the lifetime of the library, and are thus considered a borrow. Under normal circumstances, one would be unable to store both the library and the symbols within a single struct, but the macro defined in this crate allows you to define a struct that is capable of storing both simultaneously.
+```rust,ignore
+rental! {
+    pub mod rent_libloading {
+        use libloading;
 
-Such a struct can be declared like this:
-
-```rust
-rental!{
-    mod rent_lib {
-        use std::sync::Arc;
-        use libloading::*;
-
-        pub rental RentSym<'rental, S: ['rental]>(Arc<Library>, Symbol<'rental, S>): Deref(S);
+        #[rental(deref_suffix)] // This struct will deref to the target of Symbol.
+        pub struct RentSymbol<S: 'static> {
+            lib: Box<libloading::Library>, // Library is boxed for stable deref.
+            sym: libloading::Symbol<'lib, S>, // The 'lib lifetime borrows lib.
+        }
     }
+}
+
+fn main() {
+    let lib = libloading::Library::new("my_lib.so").unwrap(); // Open our dylib.
+    if let Ok(rs) = rent_libloading::RentSymbol::try_new(
+        Box::new(lib),
+        |lib| unsafe { lib.get::<extern "C" fn()>(b"my_symbol") }) // Loading Symbols is unsafe.
+    {
+        (*rs)(); // Call our function
+    };
 }
 ```
 
-This defines a new struct that can hold an `Arc` of a `Library`, and a `Symbol` loaded from it. An `Arc` is used here so that the library can be shared with other such structs. The `'rental` lifetime is handled specially and represents the shared connection between the owner and the borrow. The lifetime `'rental` appears as the bound on the `Symbol`, because that is the lifetime that will be attached when you obtain the `Symbol` by calling `Library::get` inside the creation closure.
+In this way we can store both the `Library` and the `Symbol` that borrows it in a single struct. We can even tell our struct to deref to the function pointer itself so we can easily call it. This is legal because the function pointer does not contain any of the special lifetimes introduced by the rental struct in its type signature, which means reborrowing will not expose them to the outside world. As an aside, the `unsafe` block for loading the symbol is necessary because the act of loading a symbol from a dylib is unsafe, and is unrelated to rental.
 
-For a type to be eligible as an owner, it must also implement the `FixedDeref` trait. Because the rental struct can be moved freely, the internal borrow could be invalidated if it refers to data that has been moved. For this reason, The owner must be `Deref`, and furthermove must deref to a fixed memory address for the life of the rental. `FixedDeref` is an unsafe trait that reflects these requirements. Finally, after the declaration, you may optionally add `: Deref(Target)` where `Target` is the `Deref` target of the rented type. This can't be inferred, because it must be checked to ensure that it does NOT contain the `'rental` lifetime anywhere in its signature. If it does, then implementing `Deref` would be unsafe, and the macro will reject it.
- 
-To create an instance:
+For a more advanced case, let's take a look at the [`alto`](https://crates.io/crates/alto) OpenAL bindings. Alto defines an `Alto` struct that represents the API, from which we can borrow an output `Device`, from which we can borrow a device `Context`. This is a 3-level self-referential relationship, but rental can handle it just fine:
 
-```rust
-let sym = RentSym::try_new(lib, |lib| unsafe { lib.get::<fn()>(b"my_symbol") }).unwrap();
+```rust,ignore
+rental! {
+    pub mod rent_alto {
+        use alto;
+
+        #[rental]
+        pub struct RentContext {
+            alto: Box<alto::Alto>,
+            dev: Box<alto::Device<'alto>>,
+            ctx: alto::Context<'dev>,
+        }
+    }
+}
+
+fn main() {
+    let alto = alto::Alto::load_default().unwrap(); // Load the default OpenAL impl.
+    if let Ok(rent_ctx) = rent_alto::RentContext::try_new(
+        Box::new(alto),
+        |alto| alto.open(None).map(|dev| Box::new(dev)), // Open the default device.
+        |dev, _alto| dev.new_context(None), // Create a new context for our device.
+    ) {
+        rent_ctx.rent(|ctx| {
+            // Do stuff with our context
+        });
+    };
+}
 ```
 
-NOTE: The `unsafe` here is solely because loading a symbol from the dylib is unsafe, unrelated to this library, I promise :)
+This approach can be extended to as many fields as you like, up to a current implementation defined maximum. Read below for more information on current limitations.
 
-Inside this closure, the `'rental` lifetime becomes "existential" and cannot be satisfied by anything outside the closure, preventing anything tied to it from being exfiltrated. The function held by the struct can then be called by simply:
+# Limitations
+There are a few limitations with the current implementation. These limitations aren't fundamental, but rather the result of bugs or pending features in rust itself, and will be lifted once the underlying language allows it.
 
-```rust
-sym();
-```
-
-In this way, the symbol can be carried around and called as a single unit, but retains within it the library that it depends on. The user is thus relieved of the concern of keeping the library alive, or even knowing that it exists at all.
-
-In cases where the rented valued is not `Deref` or does not meet the requirements for a safe `Deref` impl as described earlier, you can access the internal value with the `rent` method, which will pass to you an existentially bound reference to the rented value. The example above could also be written like this:
-
-```rust
-sym.rent(|s| s());
-```
+* Currently, the rental struct itself cannot take lifetime parameters, and any type parameters it takes must be `'static`. In most situations this is fine, since most of the use cases for this library involve erasing all of the lifetimes anyway, but there's no reason why the head element of a rental struct shouldn't be able to be non-`'static`. This is currently impossible to implement due to lack of an `'unsafe` lifetime or equivalent feature.
+* Prefix fields must be of the form `Foo<T>` where `Foo` is some `StableDeref` container. This requirement is syntactic as well as semantic, meaning that if you use some type alias `MyAlias = Foo<T>` compilation will fail because it cannot parse the type information it needs. Just use the literal type and everything should be fine. This limitation can be lifted once rust gets ATC or possibly after current bugs surrounding HRTB associated item unification are fixed. The requirement for `StableDeref` at all can possibly be lifted if rust gains a notion of immovable types.
+* Rental structs can only have a maximum of 32 rental lifetimes, including transitive rental lifetimes from subrentals. This limitation is the result of needing to implement a new trait for each rental arity. More traits can easily be defined though. Lifting this limitation entirely would require some kind of variadic lifetime generics.
