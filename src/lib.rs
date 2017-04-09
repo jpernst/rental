@@ -132,6 +132,7 @@ pub mod __rental_prelude {
 	pub use core::mem::transmute;
 	pub use core::result::Result;
 	pub use core::option::Option;
+	pub use core::fmt;
 	pub use stable_deref_trait::StableDeref;
 
 	pub use super::{IntoSuffix, TryNewError, TryNewResult};

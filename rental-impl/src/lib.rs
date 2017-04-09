@@ -82,6 +82,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	let mut is_rental_mut = false;
 	let mut is_deref_suffix = false;
 	let mut is_deref_mut_suffix = false;
+	let mut is_debug_borrow = false;
 	if let Some(rental_pos) = rattrs.iter().filter(|attr| !attr.is_sugared_doc).position(|attr| match attr.value {
 		syn::MetaItem::Word(ref attr_ident) => {
 			is_rental_mut = match attr_ident.as_ref() {
@@ -99,26 +100,37 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				_ => return false,
 			};
 
-			match (nested.get(0), nested.get(1)) {
-				(
-					Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::Word(ref deref_suffix_name))),
-					None
-				) if deref_suffix_name == "deref_suffix" => {
-					is_deref_suffix = true;
-				},
-				(
-					Some(&syn::NestedMetaItem::MetaItem(syn::MetaItem::Word(ref deref_suffix_name))),
-					None
-				) if deref_suffix_name == "deref_mut_suffix" => {
-					is_deref_suffix = true;
-					is_deref_mut_suffix = true;
-				},
-				(None, None) => (),
-				_ => panic!(
-					"`{}` attribute on struct `{}` must have no arguments or optionally one of `deref_suffix`/`deref_mut_suffix`.",
-					if !is_rental_mut { "rental" } else { "rental_mut" },
-					item.ident
-				),
+			let mut nested = nested.clone();
+			nested.retain(|nested| {
+				if let syn::NestedMetaItem::MetaItem(ref item) = *nested {
+					match *item {
+						syn::MetaItem::Word(ref ident) => {
+							match ident.as_ref() {
+								"debug_borrow" => {
+									is_debug_borrow = true;
+									false
+								},
+								"deref_suffix" => {
+									is_deref_suffix = true;
+									false
+								},
+								"deref_mut_suffix" => {
+									is_deref_suffix = true;
+									is_deref_mut_suffix = true;
+									false
+								},
+								_ => true,
+							}
+						},
+						_ => true,
+					}
+				} else {
+					true
+				}
+			});
+
+			if nested.len() > 0 {
+				panic!("Struct `{}` rental attribute takes optional arguments: `debug_borrow`, `deref_suffix`, and `deref_mut_suffix`.", item.ident);
 			}
 
 			true
@@ -127,11 +139,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	}) {
 		rattrs.remove(rental_pos);
 	} else {
-		panic!("Struct `{}` must have a `rental` or `rental_mut` attribute.", item.ident);
+		panic!("Struct `{}` must not have attributes other than one `rental` or `rental_mut`.", item.ident);
 	}
 
 	if rattrs.iter().any(|attr| match attr.value { syn::MetaItem::NameValue(ref ident, ..) if ident == "doc" => false, _ => true }) {
-		panic!("Struct `{}` must not have attributes other than `rental` or `rental_mut`.", item.ident);
+		panic!("Struct `{}` must not have attributes other than one `rental` or `rental_mut`.", item.ident);
 	}
 
 	let fields = match *struct_data {
@@ -156,16 +168,8 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 		let mut rfattrs = field.attrs.clone();
 		let mut subrental = None;
+		let mut target_ty_hack = None;
 		if let Some(sr_pos) = rfattrs.iter().position(|a| match a.value {
-			syn::MetaItem::Word(ref ident) => {
-				if ident == "subrental" {
-					panic!(
-						"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
-						item.ident,
-						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
-					);
-				} else { false }
-			},
 			syn::MetaItem::List(ref attr_ident, ref nested) => {
 				if attr_ident == "subrental" {
 					match (nested.get(0), nested.get(1)) {
@@ -188,14 +192,55 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 					true
 				} else { false }
 			},
-			_ => false,
+			syn::MetaItem::Word(ref ident) | syn::MetaItem::NameValue(ref ident, ..) => {
+				if ident == "subrental" {
+					panic!(
+						"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
+						item.ident,
+						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+					);
+				} else { false }
+			},
 		}) {
 			rfattrs.remove(sr_pos);
 		}
 
+		if let Some(tth_pos) = rfattrs.iter().position(|a| match a.value {
+			syn::MetaItem::NameValue(ref name, ref value) => {
+				if name == "target_ty_hack" {
+					if let syn::Lit::Str(ref ty_str, ..) = *value {
+						if let Ok(ty) = syn::parse_type(ty_str) {
+							target_ty_hack = Some(ty);
+						}
+					} 
+
+					if target_ty_hack.is_none() {
+						panic!(
+							"`target_ty_hack` attribute on struct `{}` field `{}` expects a ty string.",
+							item.ident,
+							field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+						);
+					}
+
+					true
+				} else { false }
+			},
+			syn::MetaItem::Word(ref name) | syn::MetaItem::List(ref name, ..) => {
+				if name == "target_ty_hack" {
+					panic!(
+						"`target_ty_hack` attribute on struct `{}` field `{}` expects a ty string.",
+						item.ident,
+						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+					);
+				} else { false }
+			},
+		}) {
+			rfattrs.remove(tth_pos);
+		}
+
 		if rfattrs.iter().any(|attr| match attr.value { syn::MetaItem::NameValue(ref ident, ..) if ident == "doc" => false, _ => true }) {
 			panic!(
-				"Struct `{}` field `{}` must not have attributes other than `subrental`.",
+				"Struct `{}` field `{}` must not have attributes other than one `subrental` and `target_ty_hack`.",
 				item.ident,
 				field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 			);
@@ -230,6 +275,30 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			syn::fold::noop_fold_ty(&mut eraser, field.ty.clone())
 		};
 
+		let target_ty_hack = target_ty_hack.as_ref().map(|ty| (*ty).clone()).or_else(|| if field_idx < fields.len() - 1 {
+			if let syn::Ty::Path(_, ref ty_path) = field.ty {
+				if let syn::PathSegment{ref ident, parameters: syn::PathParameters::AngleBracketed(ref params)} = ty_path.segments[ty_path.segments.len() - 1] {
+					if params.types.len() == 1 {
+						if ident == "Vec" {
+							Some(syn::Ty::Slice(Box::new(params.types[0].clone())))
+						} else {
+							Some(params.types[0].clone())
+						}
+					} else if ident == "String" && params.types.len() == 0 {
+						Some(syn::parse_type("str").unwrap())
+					} else {
+						panic!("Field `{}` must have an angle-bracketed type parameter or be `String`.", field.ident.as_ref().unwrap())
+					}
+				} else {
+					panic!("Field `{}` must have an angle-bracketed parameter or be `String`.", field.ident.as_ref().unwrap())
+				}
+			} else {
+				panic!("Field `{}` must be a type path.", field.ident.as_ref().unwrap())
+			}
+		} else {
+			None
+		});
+
 		rfields.push(RentalField{
 			name: if let Some(ref ident) = field.ident {
 				(*ident).clone()
@@ -246,6 +315,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			subrental: subrental,
 			self_rlt_args: self_rlt_args,
 			used_rlt_args: used_rlt_args,
+			target_ty_hack: target_ty_hack,
 		});
 	}
 	let fields = rfields;
@@ -371,15 +441,23 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		),
 	};
 
+	let derives = if is_debug_borrow {
+		quote!(#[derive(Debug)])
+	} else {
+		quote!()
+	};
+
 	quote!(
 		#rstruct
 
 		/// Shared borrow of a rental struct.
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
+		#derives
 		#borrow_struct
 
 		/// Mutable borrow of a rental struct.
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
+		#derives
 		#borrow_mut_struct
 
 		unsafe impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
@@ -529,6 +607,16 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		).to_tokens(tokens);
 	}
 
+	if is_debug_borrow {
+		quote!(
+			impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause {
+				fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
+					unsafe { __rental_prelude::fmt::Debug::fmt(&self.borrow(), f) }
+				}
+			}
+		).to_tokens(tokens);
+	}
+
 	if fields[fields.len() - 1].subrental.is_some() {
 		quote!(
 			impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
@@ -663,36 +751,14 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 			(quote!(<#orig_ty as __rental_prelude::Deref>::Target), quote!(*))
 		};
 
-		let field_ty_hack = if idx < fields.len() - 1 {
-			if let syn::Ty::Path(_, ref ty_path) = fields[idx].orig_ty {
-				if let syn::PathSegment{ref ident, parameters: syn::PathParameters::AngleBracketed(ref params)} = ty_path.segments[ty_path.segments.len() - 1] {
-					if params.types.len() == 1 {
-						if ident == "Vec" {
-							syn::Ty::Slice(Box::new(params.types[0].clone()))
-						} else {
-							params.types[0].clone()
-						}
-					} else if ident == "String" && params.types.len() == 0 {
-						syn::parse_type("str").unwrap()
-					} else {
-						panic!("Field `{}` must have an angle-bracketed type parameter or be `String`.", fields[idx].name)
-					}
-				} else {
-					panic!("Field `{}` must have an angle-bracketed parameter or be `String`.", fields[idx].name)
-				}
-			} else {
-				panic!("Field `{}` must be a type path.", fields[idx].name)
-			}
-		} else {
-			fields[idx].orig_ty.clone()
-		};
+		let field_ty_hack = fields[idx].target_ty_hack.as_ref().unwrap_or(&fields[idx].orig_ty);
 
 		if let Some(ref subrental) = fields[idx].subrental {
 			let field_ident = &fields[idx].name;
 			let rental_trait_ident = &subrental.rental_trait_ident;
 			let field_rlt_args = &fields[idx].self_rlt_args;
 
-			let (borrow_ty_hack, borrow_mut_ty_hack, field_lt_args, field_ty_args) = if let syn::Ty::Path(ref qself, ref ty_path) = field_ty_hack {
+			let (borrow_ty_hack, borrow_mut_ty_hack, field_lt_args, field_ty_args) = if let syn::Ty::Path(ref qself, ref ty_path) = *field_ty_hack {
 				let seg_idx = ty_path.segments.len() - 1;
 				if let syn::PathParameters::AngleBracketed(ref params) = ty_path.segments[seg_idx].parameters {
 					let ty_name = &ty_path.segments[seg_idx].ident.as_ref();
@@ -848,6 +914,7 @@ struct RentalField {
 	pub subrental: Option<Subrental>,
 	pub self_rlt_args: Vec<syn::Lifetime>,
 	pub used_rlt_args: Vec<syn::Lifetime>,
+	pub target_ty_hack: Option<syn::Ty>,
 }
 
 
