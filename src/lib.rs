@@ -66,13 +66,13 @@
 //! }
 //! ```
 //! 
-//! This approach can be extended to as many fields as you like, up to a current implementation defined maximum. Read below for more information on current limitations.
+//! This approach can be extended to as many fields as you like, up to a current implementation defined maximum (see Limitations section).
 //! 
 //! # Limitations
 //! There are a few limitations with the current implementation. These limitations aren't fundamental, but rather the result of bugs or pending features in rust itself, and will be lifted once the underlying language allows it.
 //! 
 //! * Currently, the rental struct itself cannot take lifetime parameters, and any type parameters it takes must be `'static`. In most situations this is fine, since most of the use cases for this library involve erasing all of the lifetimes anyway, but there's no reason why the head element of a rental struct shouldn't be able to be non-`'static`. This is currently impossible to implement due to lack of an `'unsafe` lifetime or equivalent feature.
-//! * Prefix fields must be of the form `Foo<T>` where `Foo` is some `StableDeref` container. This requirement is syntactic as well as semantic, meaning that if you use some type alias `MyAlias = Foo<T>` compilation will fail because it cannot parse the type information it needs. Just use the literal type and everything should be fine. This limitation can be lifted once rust gets ATC or possibly after current bugs surrounding HRTB associated item unification are fixed. The requirement for `StableDeref` at all can possibly be lifted if rust gains a notion of immovable types.
+//! * Prefix fields must be of the form `Foo<T>` where `Foo` is some `StableDeref` container, or rental will not be able to correctly guess the `Deref::Target` of the type. If you are using a custom type that does not fit this pattern, you can use the `target_ty_hack` attribute on the field to manually specify the target type. This limitation can be lifted once rust gets ATC or possibly after current bugs surrounding HRTB associated item unification are fixed. The requirement for `StableDeref` at all can possibly be lifted if rust gains a notion of immovable types.
 //! * Rental structs can only have a maximum of 32 rental lifetimes, including transitive rental lifetimes from subrentals. This limitation is the result of needing to implement a new trait for each rental arity. More traits can easily be defined though. Lifting this limitation entirely would require some kind of variadic lifetime generics.
 
 
@@ -152,13 +152,15 @@ pub mod __rental_prelude {
 /// 
 /// To start, the the top level item of the macro invocation must be a single module. This module will contain all items that the macro generates and export them to you. Within the module, only two types of items are accepted: `use` statements and struct definitions. The `use` statements are passed directly through with no special consideration; the primary concern is the struct definitions.
 /// 
-/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. These attributes may optionally take an argument of `deref_suffix` or `deref_mut_suffix` that will be discussed later.
+/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. These attributes may optionally take the option arguments of `debug_borrow`, `deref_suffix`, and `deref_mut_suffix`, discussed below.
 /// 
 /// Next, the structs must have named fields (no tuple structs) and they must have at least 2 fields, since a struct with 1 field can't meaningfully reference itself anyway.
 /// 
 /// The order of the fields is significant, as they are declared in order of least to most dependent. The first field, also referred to as the "head" of the struct, contains no self-references, the second field may borrow the first, the third field may borrow the second or first, and so on. The chain of fields after the head is called the "tail".
 /// 
 /// Because rental structs are self-referential, special care is taken to ensure that moving the struct will not invalidate any internal references. This is accomplished by requiring all fields but the last one, collectively known as the "prefix" of the struct, to implement [`StableDeref`](https://crates.io/crates/stable_deref_trait). This is not required for the final field of the struct, known as the "suffix", since nothing holds a reference to it.
+///
+/// NOTE: Because of a workaround for a compiler bug, rental might not always correctly determine the `Deref::Target` type of your prefix fields. If you receive type errors when compiling, you can try using the `target_ty_hack` attribute on the field of the struct. Set this attribute equal to a string that names the correct target type (e.g. `#[target_ty_hack = "[u8]"]` for `Vec<u8>`.
 /// 
 /// Each field that you declare creates a special lifetime of the same name that can be used by later fields to borrow it. This is how the referential relationships are established in the struct definition.
 /// 
@@ -188,7 +190,7 @@ pub mod __rental_prelude {
 /// 
 /// In addition to the rental struct itself, two other structs are generated, with `_Borrow` and `_BorrowMut` appended to the original struct name (e.g. `MyRental_Borrow` and `MyRental_BorrowMut`). These structs contain the same fields as the original struct, but are borrows of the originals. These structs are passed into certain closures that you provide to allow you access to underlying struct data. The `Mut` version only allows access to the suffix, but as a mutable rather than shared borrow.
 /// 
-/// If the suffix field of the struct implements `Deref` or `DerefMut`, you can add a `deref_suffix` or `deref_mut_suffix` argument to the `rental` attribute on the struct. This will generate a `Deref` implementation for the rental struct itself that will deref through the suffix and return the borrow to you, for convenience. Note, however, that this will only be legal if none of the special rental lifetimes appear in the type signature of the deref target. If they do, exposing them to the outside world could result in unsafety, so this is not allowed and such a scenario will not compile.
+/// If all the fields of your struct implement `Debug` then you can use the `debug_borrow` option on the rental attribute to gain a `Debug` impl on the struct itself. Also, if the suffix field of the struct implements `Deref` or `DerefMut`, you can add a `deref_suffix` or `deref_mut_suffix` argument to the `rental` attribute on the struct. This will generate a `Deref` implementation for the rental struct itself that will deref through the suffix and return the borrow to you, for convenience. Note, however, that this will only be legal if none of the special rental lifetimes appear in the type signature of the deref target. If they do, exposing them to the outside world could result in unsafety, so this is not allowed and such a scenario will not compile.
 /// 
 /// Finally, there is one other capability to discuss. If a rental struct has been defined elsewhere, either in our own crate or in a dependency, we'd like to be able to chain our own rental struct off of it. In this way, we can use another rental struct as a sort of pre-packaged prefix of our own. As a variation on the above example, it would look like this:
 /// ```rust
@@ -352,17 +354,6 @@ rental! {
 			#[subrental(arity = 2)]
 			head: Box<RentMut<T, U>>,
 			suffix: &'head_1 mut V,
-		}
-	}
-}
-
-
-rental! {
-	pub mod rent_vec_slice {
-		#[rental(deref_suffix)]
-		pub struct OwnedSlice {
-			buffer: Vec<u8>,
-			slice: &'buffer [u8],
 		}
 	}
 }
