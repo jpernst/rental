@@ -346,10 +346,12 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	let borrow_mut_ident = syn::Ident::new(item.ident.to_string() + "_BorrowMut");
 	let borrow_quotes = &make_borrow_quotes(&fields, is_rental_mut);
 	let borrow_tys = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty, ..}| ty).collect::<Vec<_>>();
+	let borrow_ty_hacks = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty_hack, ..}| ty_hack).collect::<Vec<_>>();
 	let borrow_suffix_ty = &borrow_tys[fields.len() - 1];
 	let borrow_exprs = &borrow_quotes.iter().map(|&BorrowQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
 	let borrow_suffix_expr = &borrow_exprs[fields.len() - 1];
 	let borrow_mut_tys = &borrow_quotes.iter().map(|&BorrowQuotes{ref mut_ty, ..}| mut_ty).collect::<Vec<_>>();
+	let borrow_mut_ty_hacks = &borrow_quotes.iter().map(|&BorrowQuotes{ref mut_ty_hack, ..}| mut_ty_hack).collect::<Vec<_>>();
 	let borrow_mut_suffix_ty = &borrow_mut_tys[fields.len() - 1];
 	let borrow_mut_exprs = &borrow_quotes.iter().map(|&BorrowQuotes{ref mut_expr, ..}| mut_expr).collect::<Vec<_>>();
 	let borrow_mut_suffix_expr = &borrow_mut_exprs[fields.len() - 1];
@@ -460,6 +462,24 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		#derives
 		#borrow_mut_struct
 
+		#[allow(dead_code)]
+		impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
+			fn unify_hack_tys(#(#local_idents: #borrow_ty_hacks),*) -> #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> {
+				#borrow_ident {
+					#(#field_idents: #local_idents,)*
+				}
+			}
+		}
+
+		#[allow(dead_code)]
+		impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> #struct_where_clause {
+			fn unify_hack_tys(#(#local_idents: #borrow_mut_ty_hacks),*) -> #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*> {
+				#borrow_mut_ident {
+					#(#field_idents: #local_idents,)*
+				}
+			}
+		}
+
 		unsafe impl<#(#borrow_lt_params,)* #(#struct_ty_params),*> __rental_prelude::#rental_trait_ident<#(#struct_rlt_args),*> for #item_ident #struct_impl_args #struct_where_clause {
 			type Borrow = #borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
 			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
@@ -512,18 +532,14 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			///
 			/// This is unsafe because the erased lifetimes are exposed. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
 			pub unsafe fn borrow<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::Borrow {
-				#borrow_ident {
-					#(#local_idents: __rental_prelude::transmute(#borrow_exprs),)*
-				}
+				#borrow_ident::unify_hack_tys(#(__rental_prelude::transmute(#borrow_exprs),)*)
 			}
 
 			/// Return a direct mutable borrow of the suffix of the struct.
 			///
 			/// This is unsafe because the erased lifetimes are exposed. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
 			pub unsafe fn borrow_mut<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg mut self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::BorrowMut {
-				#borrow_mut_ident {
-					#(#local_idents: __rental_prelude::transmute(#borrow_mut_exprs),)*
-				}
+				#borrow_mut_ident::unify_hack_tys(#(__rental_prelude::transmute(#borrow_mut_exprs),)*)
 			}
 
 			/// Execute a closure on the shared suffix of the struct.
@@ -790,7 +806,11 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow>)
 				},
-
+				ty_hack: if idx == fields.len() - 1 || !is_rental_mut {
+					quote!(#borrow_ty_hack<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>)
+				} else {
+					quote!(__rental_prelude::PhantomData<#borrow_ty_hack<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>>)
+				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					//quote!(unsafe { (#deref self.#field_ident).borrow() })
 					quote!(unsafe { (#deref *self.#field_ident.as_ref().unwrap()).borrow() })
@@ -803,7 +823,11 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut>)
 				},
-
+				mut_ty_hack: if idx == fields.len() - 1 {
+					quote!(#borrow_mut_ty_hack<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>)
+				} else {
+					quote!(__rental_prelude::PhantomData<#borrow_mut_ty_hack<#(#field_lt_args,)* #(#field_rlt_args,)* #(#field_ty_args),*>>)
+				},
 				mut_expr: if idx == fields.len() - 1 {
 					//quote!(unsafe { (#deref self.#field_ident).borrow_mut() })
 					quote!(unsafe { (#deref *self.#field_ident.as_mut().unwrap()).borrow_mut() })
@@ -834,6 +858,11 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				} else {
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #field_ty>)
 				},
+				ty_hack: if idx == fields.len() - 1 || !is_rental_mut {
+					quote!(&#field_rlt_arg #field_ty_hack)
+				} else {
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #field_ty_hack>)
+				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					//quote!(& #deref self.#field_ident)
 					quote!(&#deref *self.#field_ident.as_ref().unwrap())
@@ -845,6 +874,11 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 					quote!(&#field_rlt_arg mut #field_ty)
 				} else {
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #field_ty>)
+				},
+				mut_ty_hack: if idx == fields.len() - 1 {
+					quote!(&#field_rlt_arg mut #field_ty_hack)
+				} else {
+					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #field_ty_hack>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
 					//quote!(&mut #deref self.#field_ident)
@@ -926,8 +960,10 @@ struct Subrental {
 
 struct BorrowQuotes {
 	pub ty: quote::Tokens,
+	pub ty_hack: quote::Tokens,
 	pub expr: quote::Tokens,
 	pub mut_ty: quote::Tokens,
+	pub mut_ty_hack: quote::Tokens,
 	pub mut_expr: quote::Tokens,
 	pub new_ty: quote::Tokens,
 	pub new_expr: quote::Tokens,
