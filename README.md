@@ -7,7 +7,7 @@ It can sometimes occur in the course of designing an API that it would be conven
 
 Creating such a struct manually requires unsafe code to erase lifetime parameters from the field types. Accessing such a field directly would be completely unsafe as a result. This library addresses the issue by allowing access to the internal fields only under carefully controlled circumstances, through closures that are bounded by generic lifetimes to prevent infiltration or exfiltration of any data with an incorrect lifetime.
 
-The API of this crate consists of the [`rental`](macro.rental.html) macro, which generates self-referential structs, and a few example instantiations to demonstrate the API provided by such structs (see [`RentRef`](examples/struct.RentRef.html), [`RentMut`](examples/struct.RentMut.html), [`RentRefMap`](examples/struct.RentRefMap.html), and [`RentMutMap`](examples/struct.RentMutMap.html)).
+The API of this crate consists of the `rental` macro, which generates self-referential structs, and a few example instantiations to demonstrate the API provided by such structs (see `RentRef`, `RentMut`, `RentRefMap`, `RentMutMap`).
 
 # Use Cases
 One instance where this crate is useful is when working with `libloading`. That crate provides a `Library` struct that defines methods to borrow `Symbol`s from it. These symbols are bounded by the lifetime of the library, and are thus considered a borrow. Under normal circumstances, one would be unable to store both the library and the symbols within a single struct, but the macro defined in this crate allows you to define a struct that is capable of storing both simultaneously, like so:
