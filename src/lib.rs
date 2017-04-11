@@ -166,6 +166,7 @@ pub mod __rental_prelude {
 /// Each field that you declare creates a special lifetime of the same name that can be used by later fields to borrow it. This is how the referential relationships are established in the struct definition.
 /// 
 /// This is a all a bit to chew on so far, so let's stop and take a look at an example:
+///
 /// ```rust
 /// # #[macro_use] extern crate rental;
 /// pub struct Foo { i: i32 }
@@ -194,6 +195,7 @@ pub mod __rental_prelude {
 /// If all the fields of your struct implement `Debug` then you can use the `debug_borrow` option on the rental attribute to gain a `Debug` impl on the struct itself. Also, if the suffix field of the struct implements `Deref` or `DerefMut`, you can add a `deref_suffix` or `deref_mut_suffix` argument to the `rental` attribute on the struct. This will generate a `Deref` implementation for the rental struct itself that will deref through the suffix and return the borrow to you, for convenience. Note, however, that this will only be legal if none of the special rental lifetimes appear in the type signature of the deref target. If they do, exposing them to the outside world could result in unsafety, so this is not allowed and such a scenario will not compile.
 /// 
 /// Finally, there is one other capability to discuss. If a rental struct has been defined elsewhere, either in our own crate or in a dependency, we'd like to be able to chain our own rental struct off of it. In this way, we can use another rental struct as a sort of pre-packaged prefix of our own. As a variation on the above example, it would look like this:
+///
 /// ```rust
 /// # #[macro_use] extern crate rental;
 /// pub struct Foo { i: i32 }
