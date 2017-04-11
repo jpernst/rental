@@ -44,12 +44,19 @@ fn new() {
 fn read() {
 	let foo = Foo { i: 5 };
 
-	let sr = rentals::SimpleRef::new(Box::new(foo), |foo| &foo.i);
-	let i: i32 = sr.rent(|iref| **iref);
-	assert_eq!(i, 5);
+	let mut sr = rentals::SimpleRef::new(Box::new(foo), |foo| &foo.i);
 
-	let iref: &i32 = sr.ref_rent(|iref| *iref);
-	assert_eq!(*iref, 5);
+	{
+		let i: i32 = sr.rent(|iref| **iref);
+		assert_eq!(i, 5);
+	}
+
+	{
+		let iref: &i32 = sr.ref_rent(|iref| *iref);
+		assert_eq!(*iref, 5);
+	}
 
 	assert_eq!(*sr, 5);
+
+	assert_eq!(sr.rent_all_mut(|borrows| borrows.foo.i), 5);
 }
