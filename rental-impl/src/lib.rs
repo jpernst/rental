@@ -139,7 +139,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	}) {
 		rattrs.remove(rental_pos);
 	} else {
-		panic!("Struct `{}` must not have attributes other than one `rental` or `rental_mut`.", item.ident);
+		panic!("Struct `{}` must have a `rental` or `rental_mut` attribute.", item.ident);
 	}
 
 	if rattrs.iter().any(|attr| match attr.value { syn::MetaItem::NameValue(ref ident, ..) if ident == "doc" => false, _ => true }) {
@@ -373,13 +373,13 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		lt_def
 	}).chain(struct_rlt_params.iter().cloned()).collect::<Vec<_>>();
 
-	let head_local_ident = &local_idents[0];
-	let head_local_ident_rep = &iter::repeat(&head_local_ident).take(fields.len() - 1).collect::<Vec<_>>();
+	let head_ident = &local_idents[0];
+	let head_ident_rep = &iter::repeat(&head_ident).take(fields.len() - 1).collect::<Vec<_>>();
 	let head_ty = &fields[0].orig_ty;
 	let prefix_field_tys = &fields.iter().map(|field| &field.erased.ty).take(fields.len() - 1).collect::<Vec<_>>();
 	let tail_field_tys = &fields.iter().map(|field| &field.erased.ty).skip(1).collect::<Vec<_>>();
 	let tail_field_idents_reverse = &field_idents.iter().skip(1).rev().collect::<Vec<_>>();
-	let tail_local_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
+	let tail_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
 	let tail_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__F{}", field.name))).collect::<Vec<_>>();
 	let tail_closure_quotes = make_tail_closure_quotes(&fields, borrow_quotes, is_rental_mut);
 	let tail_closure_bounds = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref bound, ..}| bound).collect::<Vec<_>>();
@@ -491,13 +491,13 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			///
 			/// The first argument provided is the head, followed by a series of closures, one for each tail field. Each of these closures will receive, as its arguments, a borrow of the previous field, followed by borrows of the remaining prefix fields if the struct is a shared rental. If the struct is a mutable rental, only the immediately preceding field is passed.
 			pub fn new<#(#tail_closure_tys),*>(
-				mut #head_local_ident: #head_ty,
-				#(#tail_local_idents: #tail_closure_tys),*
+				mut #head_ident: #head_ty,
+				#(#tail_idents: #tail_closure_tys),*
 			) -> Self where #(#tail_closure_tys: #tail_closure_bounds),*
 			{
 				#(__rental_prelude::static_assert_stable_deref::<#prefix_field_tys>();)*
 
-				#(let mut #tail_local_idents = unsafe { __rental_prelude::transmute::<_, #tail_field_tys>(#tail_closure_exprs) };)*
+				#(let mut #tail_idents = unsafe { __rental_prelude::transmute::<_, #tail_field_tys>(#tail_closure_exprs) };)*
 
 				#item_ident {
 					#(#field_idents: Some(#local_idents),)*
@@ -508,18 +508,18 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			///
 			/// As `new`, but each closure returns a `Result`. If the result is an error, execution is short-circuited and the error is returned to you, along with the original head value.
 			pub fn try_new<#(#tail_closure_tys,)* __E>(
-				mut #head_local_ident: #head_ty,
-				#(#tail_local_idents: #tail_closure_tys),*
+				mut #head_ident: #head_ty,
+				#(#tail_idents: #tail_closure_tys),*
 			) -> __rental_prelude::TryNewResult<Self, __E, #head_ty> where
 				#(#tail_closure_tys: #tail_try_closure_bounds,)*
 			{
 				#(__rental_prelude::static_assert_stable_deref::<#prefix_field_tys>();)*
 
-				#(let mut #tail_local_idents = {
+				#(let mut #tail_idents = {
 					let temp = #tail_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute::<_, #tail_field_tys>(t) });
 					match temp {
 						Ok(t) => t,
-						Err(e) => return Err(__rental_prelude::TryNewError(e.into(), #head_local_ident_rep)),
+						Err(e) => return Err(__rental_prelude::TryNewError(e.into(), #head_ident_rep)),
 					}
 				};)*
 
@@ -585,7 +585,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			/// Drop the rental struct and return the original head value to you.
 			pub fn into_head(mut self) -> #head_ty {
 				#(drop(self.#tail_field_idents_reverse.take());)*
-				self.#head_local_ident.take().unwrap()
+				self.#head_ident.take().unwrap()
 			}
 		}
 
@@ -600,6 +600,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		quote!(
 			#[allow(dead_code)]
 			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
+				/// Return a shared reference to the head field of the struct.
+				pub fn head(&self) -> &<#head_ty as __rental_prelude::Deref>::Target {
+					&*self.#head_ident.as_ref().unwrap()
+				}
+
 				/// Execute a closure on shared borrows of the fields of the struct.
 				///
 				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
@@ -1070,7 +1075,7 @@ mod tests {
 
 
 	#[test]
-	#[should_panic(expected = "must have no arguments or optionally one of")]
+	#[should_panic(expected = "rental attribute takes optional arguments")]
 	fn unknown_rental_attrib() {
 		test_write(quote! {
 			#[rental(foo)]
