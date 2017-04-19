@@ -14,11 +14,11 @@ impl<T: 'static> Foo<T> {
 
 rental! {
 	mod rentals {
-		use super::*;
+		type FooAlias<T> = super::Foo<T>;
 
 		#[rental(deref_suffix)]
 		pub struct SimpleRef<T: 'static> {
-			foo: Box<Foo<T>>,
+			foo: Box<FooAlias<T>>,
 			tref: &'foo T,
 		}
 	}
