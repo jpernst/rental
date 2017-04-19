@@ -1,4 +1,4 @@
-# Rental - A Macro to generate self-borrowing structs
+# Rental - A Macro to generate self-referential structs
 
 [Documentation](http://docs.rs/rental)
 

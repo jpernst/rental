@@ -1,4 +1,4 @@
-//! A macro to generate self-borrowing structs.
+//! A macro to generate self-referntial structs.
 //! 
 //! # Overview
 //! It can sometimes occur in the course of designing an API that it would be convenient, or even necessary, to allow fields within a struct to hold references to other fields within that same struct. Rust's concept of ownership and borrowing is quite flexible, but can't quite express such a scenario yet.
@@ -153,7 +153,7 @@ pub mod __rental_prelude {
 /// 
 /// To start, the the top level item of the macro invocation must be a single module. This module will contain all items that the macro generates and export them to you. Within the module, only two types of items are accepted: `use` statements and struct definitions. The `use` statements are passed directly through with no special consideration; the primary concern is the struct definitions.
 /// 
-/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. These attributes may optionally take the option arguments of `debug_borrow`, `deref_suffix`, and `deref_mut_suffix`, discussed below.
+/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. These attributes may optionally take the arguments `debug_borrow`, `deref_suffix`, and `deref_mut_suffix`, discussed below.
 /// 
 /// Next, the structs must have named fields (no tuple structs) and they must have at least 2 fields, since a struct with 1 field can't meaningfully reference itself anyway.
 /// 
@@ -190,7 +190,7 @@ pub mod __rental_prelude {
 /// 
 /// Here we see each field use the special lifetimes of the previous fields to establish the borrowing chain.
 /// 
-/// In addition to the rental struct itself, two other structs are generated, with `_Borrow` and `_BorrowMut` appended to the original struct name (e.g. `MyRental_Borrow` and `MyRental_BorrowMut`). These structs contain the same fields as the original struct, but are borrows of the originals. These structs are passed into certain closures that you provide to allow you access to underlying struct data. The `Mut` version only allows access to the suffix, but as a mutable rather than shared borrow.
+/// In addition to the rental struct itself, two other structs are generated, with `_Borrow` and `_BorrowMut` appended to the original struct name (e.g. `MyRental_Borrow` and `MyRental_BorrowMut`). These structs contain the same fields as the original struct, but are borrows of the originals. These structs are passed into certain closures that you provide to allow you access to underlying struct data. For mutable rentals, these structs will only contain a borrow of the suffix; the other fields will be erased with `PhantomData`.
 /// 
 /// If all the fields of your struct implement `Debug` then you can use the `debug_borrow` option on the rental attribute to gain a `Debug` impl on the struct itself. Also, if the suffix field of the struct implements `Deref` or `DerefMut`, you can add a `deref_suffix` or `deref_mut_suffix` argument to the `rental` attribute on the struct. This will generate a `Deref` implementation for the rental struct itself that will deref through the suffix and return the borrow to you, for convenience. Note, however, that this will only be legal if none of the special rental lifetimes appear in the type signature of the deref target. If they do, exposing them to the outside world could result in unsafety, so this is not allowed and such a scenario will not compile.
 /// 
@@ -223,7 +223,7 @@ pub mod __rental_prelude {
 /// # fn main () { }
 /// ```
 /// 
-/// The first rental struct is fairly standard, so we'll focus on the second one. The head field is given a `subrental` attribute with an `arity` argument. The arity of a rental struct is the number of special lifetimes it creates. As can be seen above, the first struct has two fields, neither of which is itself a subrental, so it has an arity of 2. The arity of the second struct would be 3, since it includes the two fields of the first rental as well as one new one. In this way, arity is transitive. So if we used our new struct itself as a subrental of yet another struct, we'd need to declare the field with `arity = 3`. The special lifetimes created by a subrental are the field named, followed by a `_` and a zero-based index.
+/// The first rental struct is fairly standard, so we'll focus on the second one. The head field is given a `subrental` attribute with an `arity` argument. The arity of a rental struct is the number of special lifetimes it creates. As can be seen above, the first struct has two fields, neither of which is itself a subrental, so it has an arity of 2. The arity of the second struct would be 3, since it includes the two fields of the first rental as well as one new one. In this way, arity is transitive. So if we used our new struct itself as a subrental of yet another struct, we'd need to declare the field with `arity = 3`. The special lifetimes created by a subrental are the field name followed by a `_` and a zero-based index.
 /// 
 /// This covers the essential capabilities of the macro itself. For details on the API of the structs themselves, see the [`examples`](examples/index.html) module.
 #[macro_export]
