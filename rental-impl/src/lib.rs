@@ -34,6 +34,9 @@ define_proc_macros! {
 				syn::ItemKind::Use(..) => {
 					item.to_tokens(&mut tokens);
 				},
+				syn::ItemKind::Ty(..) => {
+					item.to_tokens(&mut tokens);
+				},
 				syn::ItemKind::Struct(..) => {
 					write_rental_struct_and_impls(&mut tokens, &item);
 				},
