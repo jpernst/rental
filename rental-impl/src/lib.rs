@@ -696,7 +696,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			).to_tokens(tokens);
 		}
 
-		if is_deref_suffix {
+		if is_deref_mut_suffix {
 			quote!(
 				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
 					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
