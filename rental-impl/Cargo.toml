@@ -1,6 +1,6 @@
 [package]
 name = "rental-impl"
-version = "0.4.8"
+version = "0.4.9"
 license = "MIT/Apache-2.0"
 authors = ["Jameson Ernst <jameson@jpernst.com>"]
 description = "An implementation detail of rental. Should not be used directly."
@@ -11,6 +11,6 @@ documentation = "https://docs.rs/rental"
 proc-macro = true
 
 [dependencies]
-procedural-masquerade = "=0.1.1"
+procedural-masquerade = "=0.1.2"
 quote = "0.3.15"
 syn = { version = "0.11.10", features = ["full", "fold"] }
