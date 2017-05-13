@@ -575,11 +575,51 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				f(#borrow_suffix_expr)
 			}
 
+			/// Optionally return a shared reference from the shared suffix of the struct.
+			///
+			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+			pub fn maybe_ref_rent<__F, __R>(&self, f: __F) -> __rental_prelude::Option<&__R> where
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg __R>,
+				__R: 'static + ?Sized //#(#struct_lt_args +)*,
+			{
+				f(#borrow_suffix_expr)
+			}
+
+			/// Try to return a shared reference from the shared suffix of the struct, or an error on failure.
+			///
+			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+			pub fn try_ref_rent<__F, __R, __E>(&self, f: __F) -> __rental_prelude::Result<&__R, __E> where
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
+				__R: 'static + ?Sized //#(#struct_lt_args +)*,
+			{
+				f(#borrow_suffix_expr)
+			}
+
 			/// Return a mutable reference from the mutable suffix of the struct.
 			///
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn ref_rent_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> &#last_rlt_arg  mut __R,
+				__R: 'static + ?Sized //#(#struct_lt_args +)*,
+			{
+				f(#borrow_mut_suffix_expr)
+			}
+
+			/// Optionally return a mutable reference from the mutable suffix of the struct.
+			///
+			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+			pub fn maybe_ref_rent_mut<__F, __R>(&mut self, f: __F) -> __rental_prelude::Option<&mut __R> where
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg  mut __R>,
+				__R: 'static + ?Sized //#(#struct_lt_args +)*,
+			{
+				f(#borrow_mut_suffix_expr)
+			}
+
+			/// Try to return a mutable reference from the mutable suffix of the struct, or an error on failure.
+			///
+			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+			pub fn try_ref_rent_mut<__F, __R, __E>(&mut self, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
+				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg  mut __R, __E>,
 				__R: 'static + ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_suffix_expr)
@@ -628,6 +668,26 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 					f(unsafe { self.borrow() })
 				}
 
+				/// Optionally return a shared reference from shared borrows of the fields of the struct.
+				///
+				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+				pub fn maybe_ref_rent_all<__F, __R>(&self, f: __F) -> __rental_prelude::Option<&__R> where
+					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> __rental_prelude::Option<&#last_rlt_arg __R>,
+					__R: 'static + ?Sized //#(#struct_lt_args +)*,
+				{
+					f(unsafe { self.borrow() })
+				}
+
+				/// Try to return a shared reference from shared borrows of the fields of the struct, or an error on failure.
+				///
+				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+				pub fn try_ref_rent_all<__F, __R, __E>(&self, f: __F) -> __rental_prelude::Result<&__R, __E> where
+					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
+					__R: 'static + ?Sized //#(#struct_lt_args +)*,
+				{
+					f(unsafe { self.borrow() })
+				}
+
 				/// Execute a closure on shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
 				///
 				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
@@ -641,8 +701,28 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				/// Return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
 				///
 				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-				pub fn ref_rent_all_mut<__F, __R>(&mut self, f: __F) -> &__R where
+				pub fn ref_rent_all_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> &#last_rlt_arg mut __R,
+					__R: 'static + ?Sized //#(#struct_lt_args +)*,
+				{
+					f(unsafe { self.borrow_mut() })
+				}
+
+				/// Optionally return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
+				///
+				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+				pub fn maybe_ref_rent_all_mut<__F, __R>(&mut self, f: __F) -> __rental_prelude::Option<&mut __R> where
+					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> __rental_prelude::Option<&#last_rlt_arg mut __R>,
+					__R: 'static + ?Sized //#(#struct_lt_args +)*,
+				{
+					f(unsafe { self.borrow_mut() })
+				}
+
+				/// Try to return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct, or an error on failure.
+				///
+				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
+				pub fn try_ref_rent_all_mut<__F, __R, __E>(&mut self, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
+					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>) -> __rental_prelude::Result<&#last_rlt_arg mut __R, __E>,
 					__R: 'static + ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { self.borrow_mut() })
