@@ -36,38 +36,6 @@
 //! 
 //! In this way we can store both the `Library` and the `Symbol` that borrows it in a single struct. We can even tell our struct to deref to the function pointer itself so we can easily call it. This is legal because the function pointer does not contain any of the special lifetimes introduced by the rental struct in its type signature, which means reborrowing will not expose them to the outside world. As an aside, the `unsafe` block for loading the symbol is necessary because the act of loading a symbol from a dylib is unsafe, and is unrelated to rental.
 //! 
-//! For a more advanced case, let's take a look at the `alto` OpenAL bindings. Alto defines an `Alto` struct that represents the API, from which we can borrow an output `Device`, from which we can borrow a device `Context`. This is a 3-level self-referential relationship, but rental can handle it just fine:
-//! 
-//! ```rust,ignore
-//! rental! {
-//!     pub mod rent_alto {
-//!         use alto;
-//! 
-//!         #[rental]
-//!         pub struct RentContext {
-//!             alto: Box<alto::Alto>,
-//!             dev: Box<alto::Device<'alto>>,
-//!             ctx: alto::Context<'dev>,
-//!         }
-//!     }
-//! }
-//! 
-//! fn main() {
-//!     let alto = alto::Alto::load_default().unwrap(); // Load the default OpenAL impl.
-//!     if let Ok(rent_ctx) = rent_alto::RentContext::try_new(
-//!         Box::new(alto),
-//!         |alto| alto.open(None).map(|dev| Box::new(dev)), // Open the default device.
-//!         |dev, _alto| dev.new_context(None), // Create a new context for our device.
-//!     ) {
-//!         rent_ctx.rent(|ctx| {
-//!             // Do stuff with our context
-//!         });
-//!     };
-//! }
-//! ```
-//! 
-//! This approach can be extended to as many fields as you like, up to a current implementation defined maximum (see Limitations section).
-//! 
 //! # Limitations
 //! There are a few limitations with the current implementation. These limitations aren't fundamental, but rather the result of bugs or pending features in rust itself, and will be lifted once the underlying language allows it.
 //! 

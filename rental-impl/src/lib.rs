@@ -488,7 +488,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			type BorrowMut = #borrow_mut_ident<#(#struct_lt_args,)* #(#struct_rlt_args,)* #(#struct_ty_args),*>;
 		}
 
-		#[allow(dead_code, unused_mut, unused_unsafe)]
+		#[allow(dead_code, unused_mut, unused_unsafe, non_camel_case_types)]
 		impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
 			/// Create a new instance of the rental struct.
 			///
@@ -645,7 +645,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
 				/// Return a shared reference to the head field of the struct.
 				pub fn head(&self) -> &<#head_ty as __rental_prelude::Deref>::Target {
-					&*self.#head_ident.as_ref().unwrap()
+					&**self.#head_ident.as_ref().unwrap()
 				}
 
 				/// Execute a closure on shared borrows of the fields of the struct.
@@ -968,12 +968,12 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 
 			BorrowQuotes {
 				ty: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(&#field_rlt_arg #field_ty)
+					quote!(&#field_rlt_arg (#field_ty))
 				} else {
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #field_ty>)
 				},
 				ty_hack: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(&#field_rlt_arg #field_ty_hack)
+					quote!(&#field_rlt_arg (#field_ty_hack))
 				} else {
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #field_ty_hack>)
 				},
@@ -985,16 +985,16 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				},
 
 				mut_ty: if idx == fields.len() - 1 {
-					quote!(&#field_rlt_arg mut #field_ty)
+					quote!(&#field_rlt_arg mut (#field_ty))
 				} else if !is_rental_mut {
-					quote!(&#field_rlt_arg #field_ty)
+					quote!(&#field_rlt_arg (#field_ty))
 				} else {
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #field_ty>)
 				},
 				mut_ty_hack: if idx == fields.len() - 1 {
-					quote!(&#field_rlt_arg mut #field_ty_hack)
+					quote!(&#field_rlt_arg mut (#field_ty_hack))
 				} else if !is_rental_mut {
-					quote!(&#field_rlt_arg #field_ty_hack)
+					quote!(&#field_rlt_arg (#field_ty_hack))
 				} else {
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #field_ty_hack>)
 				},
@@ -1009,10 +1009,10 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 
 				new_ty: if !is_rental_mut {
 					//quote!(&#field_rlt_arg #field_ty)
-					quote!(&#field_rlt_arg #field_ty_hack)
+					quote!(&#field_rlt_arg (#field_ty_hack))
 				} else {
 					//quote!(&#field_rlt_arg mut #field_ty)
-					quote!(&#field_rlt_arg mut #field_ty_hack)
+					quote!(&#field_rlt_arg mut (#field_ty_hack))
 				},
 				new_expr: if !is_rental_mut {
 					quote!(& #deref #field_ident)
