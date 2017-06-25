@@ -342,7 +342,6 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 	let rental_trait_ident = syn::Ident::new(format!("Rental{}", struct_rlt_args.len()));
 	let field_idents = &fields.iter().map(|field| &field.name).collect::<Vec<_>>();
-	let field_idents_reverse = &field_idents.iter().rev().collect::<Vec<_>>();;
 	let local_idents = field_idents;
 
 	let borrow_ident = syn::Ident::new(item.ident.to_string() + "_Borrow");
@@ -381,7 +380,6 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 	let head_ty = &fields[0].orig_ty;
 	let prefix_field_tys = &fields.iter().map(|field| &field.erased.ty).take(fields.len() - 1).collect::<Vec<_>>();
 	let tail_field_tys = &fields.iter().map(|field| &field.erased.ty).skip(1).collect::<Vec<_>>();
-	let tail_field_idents_reverse = &field_idents.iter().skip(1).rev().collect::<Vec<_>>();
 	let tail_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
 	let tail_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(format!("__F{}", field.name))).collect::<Vec<_>>();
 	let tail_closure_quotes = make_tail_closure_quotes(&fields, borrow_quotes, is_rental_mut);
@@ -401,9 +399,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			syn::VariantData::Struct(fields.iter().map(|field| {
 				let field_erased_ty = &field.erased.ty;
 				let mut field_erased = field.erased.clone();
-				field_erased.ty = syn::parse_type(&quote!(__rental_prelude::Option<#field_erased_ty>).to_string()).unwrap();
+				field_erased.ty = syn::parse_type(&quote!(#field_erased_ty).to_string()).unwrap();
 				field_erased
-			}).collect()),
+			}).rev().collect()),
 			struct_generics.clone()
 		),
 	};
@@ -503,7 +501,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				#(let mut #tail_idents = unsafe { __rental_prelude::transmute::<_, #tail_field_tys>(#tail_closure_exprs) };)*
 
 				#item_ident {
-					#(#field_idents: Some(#local_idents),)*
+					#(#field_idents: #local_idents,)*
 				}
 			}
 
@@ -527,7 +525,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 				};)*
 
 				Ok(#item_ident {
-					#(#field_idents: Some(#local_idents),)*
+					#(#field_idents: #local_idents,)*
 				})
 			}
 
@@ -627,14 +625,8 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 			/// Drop the rental struct and return the original head value to you.
 			pub fn into_head(mut self) -> #head_ty {
-				#(drop(self.#tail_field_idents_reverse.take());)*
-				self.#head_ident.take().unwrap()
-			}
-		}
-
-		impl #struct_impl_params __rental_prelude::Drop for #item_ident #struct_impl_args #struct_where_clause {
-			fn drop(&mut self) {
-				#(drop(self.#field_idents_reverse.take());)*
+				let Self{#head_ident, ..} = self;
+				#head_ident
 			}
 		}
 	).to_tokens(tokens);
@@ -645,7 +637,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
 				/// Return a shared reference to the head field of the struct.
 				pub fn head(&self) -> &<#head_ty as __rental_prelude::Deref>::Target {
-					&**self.#head_ident.as_ref().unwrap()
+					&*self.#head_ident
 				}
 
 				/// Execute a closure on shared borrows of the fields of the struct.
@@ -921,7 +913,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					//quote!(unsafe { (#deref self.#field_ident).borrow() })
-					quote!(unsafe { (#deref *self.#field_ident.as_ref().unwrap()).borrow() })
+					quote!(unsafe { (#deref self.#field_ident).borrow() })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -942,9 +934,9 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				},
 				mut_expr: if idx == fields.len() - 1 {
 					//quote!(unsafe { (#deref self.#field_ident).borrow_mut() })
-					quote!(unsafe { (#deref *self.#field_ident.as_mut().unwrap()).borrow_mut() })
+					quote!(unsafe { (#deref self.#field_ident).borrow_mut() })
 				} else if !is_rental_mut {
-					quote!(unsafe { (#deref *self.#field_ident.as_ref().unwrap()).borrow() })
+					quote!(unsafe { (#deref self.#field_ident).borrow() })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -979,7 +971,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					//quote!(& #deref self.#field_ident)
-					quote!(&#deref *self.#field_ident.as_ref().unwrap())
+					quote!(&#deref self.#field_ident)
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -1000,9 +992,9 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 				},
 				mut_expr: if idx == fields.len() - 1 {
 					//quote!(&mut #deref self.#field_ident)
-					quote!(&mut #deref *self.#field_ident.as_mut().unwrap())
+					quote!(&mut #deref self.#field_ident)
 				} else if !is_rental_mut {
-					quote!(&#deref *self.#field_ident.as_ref().unwrap())
+					quote!(&#deref self.#field_ident)
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},

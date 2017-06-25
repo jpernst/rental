@@ -29,7 +29,7 @@ impl<'a> Bar<'a> {
 
 
 rental! {
-	mod rentals {
+	pub mod rentals {
 		use super::*;
 
 		#[rental]

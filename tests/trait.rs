@@ -12,7 +12,7 @@ impl MyTrait for MyStruct { }
 
 
 rental! {
-    mod rentals {
+    pub mod rentals {
 		use ::MyTrait;
 
 		#[rental]
