@@ -116,5 +116,20 @@ fn drop_order() {
 		);
 	}
 	assert_eq!(*d.borrow(), "XyzzyQuxBazBarFoo");
+
+	let d = Rc::new(RefCell::new(String::new()));
+	{
+		let foo = Foo { i: 5, d: d.clone() };
+		let r = rentals::DropTestRent::new(
+			Box::new(foo),
+			|foo| Box::new(foo.borrow()),
+			|bar, _| Box::new(bar.borrow()),
+			|baz, _, _| Box::new(baz.borrow()),
+			|qux, _, _, _| qux.borrow()
+		);
+
+		let head = r.into_head();
+	}
+	assert_eq!(*d.borrow(), "XyzzyQuxBazBarFoo");
 }
 
