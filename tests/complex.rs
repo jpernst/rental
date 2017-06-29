@@ -49,7 +49,7 @@ impl<'a: 'b, 'b: 'c, 'c> Qux<'a, 'b, 'c> {
 
 
 rental! {
-	pub mod rentals {
+	mod rentals {
 		use super::*;
 
 		#[rental]

@@ -396,10 +396,17 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 		vis: item.vis.clone(),
 		attrs: rattrs,
 		node: syn::ItemKind::Struct(
-			syn::VariantData::Struct(fields.iter().map(|field| {
+			syn::VariantData::Struct(fields.iter().enumerate().map(|(i, field)| {
 				let field_erased_ty = &field.erased.ty;
 				let mut field_erased = field.erased.clone();
 				field_erased.ty = syn::parse_type(&quote!(#field_erased_ty).to_string()).unwrap();
+				if i < fields.len() - 1 {
+					field_erased.attrs.push(syn::Attribute {
+						style: syn::AttrStyle::Outer,
+						value: syn::MetaItem::List(syn::Ident::new("allow"), vec![syn::NestedMetaItem::MetaItem(syn::MetaItem::Word(syn::Ident::new("dead_code")))]),
+						is_sugared_doc: false
+					});
+				}
 				field_erased
 			}).rev().collect()),
 			struct_generics.clone()
