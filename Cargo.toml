@@ -1,6 +1,6 @@
 [package]
 name = "rental"
-version = "0.4.13"
+version = "0.4.14"
 license = "MIT/Apache-2.0"
 authors = ["Jameson Ernst <jameson@jpernst.com>"]
 description = "A macro to generate self-referential structs."
@@ -18,5 +18,5 @@ default = ["std"]
 std = ["stable_deref_trait/std"]
 
 [dependencies]
-rental-impl = "=0.4.13"
+rental-impl = { version = "=0.4.14", path = "rental-impl" }
 stable_deref_trait = { version = "1.0.0", default-features = false }

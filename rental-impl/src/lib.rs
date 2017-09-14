@@ -290,13 +290,15 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 					} else if ident == "String" && params.types.len() == 0 {
 						Some(syn::parse_type("str").unwrap())
 					} else {
-						panic!("Field `{}` must have an angle-bracketed type parameter or be `String`.", field.ident.as_ref().unwrap())
+						panic!("Field `{}` must be a type path with 1 type param, `String`, or a reference.", field.ident.as_ref().unwrap())
 					}
 				} else {
-					panic!("Field `{}` must have an angle-bracketed parameter or be `String`.", field.ident.as_ref().unwrap())
+					panic!("Field `{}` must be a type path with 1 type param, `String`, or a reference.", field.ident.as_ref().unwrap())
 				}
+			} else if let syn::Ty::Rptr(_, ref mty) = field.ty {
+				Some(mty.ty.clone())
 			} else {
-				panic!("Field `{}` must be a type path.", field.ident.as_ref().unwrap())
+				panic!("Field `{}` must be a type path with 1 type param, `String`, or a reference.", field.ident.as_ref().unwrap())
 			}
 		} else {
 			None
