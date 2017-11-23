@@ -1,4 +1,4 @@
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 
 extern crate proc_macro;
 #[macro_use]
@@ -516,7 +516,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 
 			/// Attempt to create a new instance of the rental struct.
 			///
-			/// As `new`, but each closure returns a `Result`. If the result is an error, execution is short-circuited and the error is returned to you, along with the original head value.
+			/// As `new`, but each closure returns a `Result`. If one of them fails, execution is short-circuited and a tuple of the error and the original head value is returned to you.
 			pub fn try_new<#(#tail_closure_tys,)* __E>(
 				mut #head_ident: #head_ty,
 				#(#tail_idents: #tail_closure_tys),*
@@ -530,6 +530,30 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, item: &syn::Item) {
 					match temp {
 						Ok(t) => t,
 						Err(e) => return Err(__rental_prelude::TryNewError(e.into(), #head_ident_rep)),
+					}
+				};)*
+
+				Ok(#item_ident {
+					#(#field_idents: #local_idents,)*
+				})
+			}
+
+			/// Attempt to create a new instance of the rental struct.
+			///
+			/// As `try_new`, but only the error value is returned upon failure; the head value is dropped. This method interacts more smoothly with existing error conversions.
+			pub fn try_new_or_drop<#(#tail_closure_tys,)* __E>(
+				mut #head_ident: #head_ty,
+				#(#tail_idents: #tail_closure_tys),*
+			) -> __rental_prelude::Result<Self, __E> where
+				#(#tail_closure_tys: #tail_try_closure_bounds,)*
+			{
+				#(__rental_prelude::static_assert_stable_deref::<#prefix_field_tys>();)*
+
+				#(let mut #tail_idents = {
+					let temp = #tail_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute::<_, #tail_field_tys>(t) });
+					match temp {
+						Ok(t) => t,
+						Err(e) => return Err(e.into()),
 					}
 				};)*
 
