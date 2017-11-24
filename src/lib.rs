@@ -121,7 +121,7 @@ pub mod __rental_prelude {
 /// 
 /// To start, the the top level item of the macro invocation must be a single module. This module will contain all items that the macro generates and export them to you. Within the module, only three types of items are accepted: `use` statements, type aliases, and struct definitions. The `use` statements and type aliases are passed directly through with no special consideration; the primary concern is the struct definitions.
 /// 
-/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. These attributes may optionally take the arguments `debug_borrow`, `deref_suffix`, and `deref_mut_suffix`, discussed below.
+/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. The `mut` variant indicates that the struct mutably borrows itself, while the normal attribute assumes shared borrows. These attributes may optionally take the arguments `debug_borrow`, `deref_suffix`, and `deref_mut_suffix`, discussed below.
 /// 
 /// Next, the structs must have named fields (no tuple structs) and they must have at least 2 fields, since a struct with 1 field can't meaningfully reference itself anyway.
 /// 
@@ -158,7 +158,7 @@ pub mod __rental_prelude {
 /// 
 /// Here we see each field use the special lifetimes of the previous fields to establish the borrowing chain.
 /// 
-/// In addition to the rental struct itself, two other structs are generated, with `_Borrow` and `_BorrowMut` appended to the original struct name (e.g. `MyRental_Borrow` and `MyRental_BorrowMut`). These structs contain the same fields as the original struct, but are borrows of the originals. These structs are passed into certain closures that you provide to allow you access to underlying struct data. For mutable rentals, these structs will only contain a borrow of the suffix; the other fields will be erased with `PhantomData`.
+/// In addition to the rental struct itself, two other structs are generated, with `_Borrow` and `_BorrowMut` appended to the original struct name (e.g. `MyRental_Borrow` and `MyRental_BorrowMut`). These structs contain the same fields as the original struct, but are borrows of the originals. These structs are passed into certain closures that you provide to the [`rent_all`](examples/struct.RentRef.html#method.rent_all) suite of methods to allow you access to the struct's fields. For mutable rentals, these structs will only contain a borrow of the suffix; the other fields will be erased with `PhantomData`.
 /// 
 /// If all the fields of your struct implement `Debug` then you can use the `debug_borrow` option on the rental attribute to gain a `Debug` impl on the struct itself. Also, if the suffix field of the struct implements `Deref` or `DerefMut`, you can add a `deref_suffix` or `deref_mut_suffix` argument to the `rental` attribute on the struct. This will generate a `Deref` implementation for the rental struct itself that will deref through the suffix and return the borrow to you, for convenience. Note, however, that this will only be legal if none of the special rental lifetimes appear in the type signature of the deref target. If they do, exposing them to the outside world could result in unsafety, so this is not allowed and such a scenario will not compile.
 /// 
