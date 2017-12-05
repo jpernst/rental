@@ -1,4 +1,4 @@
-//! A macro to generate self-referntial structs.
+//! A macro to generate safe self-referntial structs.
 //! 
 //! # Overview
 //! It can sometimes occur in the course of designing an API that it would be convenient, or even necessary, to allow fields within a struct to hold references to other fields within that same struct. Rust's concept of ownership and borrowing is quite flexible, but can't quite express such a scenario yet.
