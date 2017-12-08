@@ -3,11 +3,11 @@
 [Documentation](http://docs.rs/rental)
 
 # Overview
-It can sometimes occur in the course of designing an API that it would be convenient, or even necessary, to allow fields within a struct to hold references to other fields within that same struct. Rust's concept of ownership and borrowing is quite flexible, but can't quite express such a scenario yet.
+It can sometimes occur in the course of designing an API that it would be convenient, or even necessary, to allow fields within a struct to hold references to other fields within that same struct. Rust's concept of ownership and borrowing is powerful, but can't express such a scenario yet.
 
-Creating such a struct manually requires unsafe code to erase lifetime parameters from the field types. Accessing such a field directly would be completely unsafe as a result. This library addresses the issue by allowing access to the internal fields only under carefully controlled circumstances, through closures that are bounded by generic lifetimes to prevent infiltration or exfiltration of any data with an incorrect lifetime.
+Creating such a struct manually would require unsafe code to erase lifetime parameters from the field types. Accessing the fields directly would be completely unsafe as a result. This library addresses that issue by allowing access to the internal fields only under carefully controlled circumstances, through closures that are bounded by generic lifetimes to prevent infiltration or exfiltration of any data with an incorrect lifetime. In short, while the struct internally uses unsafe code to store the fields, the interface exposed to the consumer of the struct is completely safe. The implementation of this interface is subtle and verbose, hence the macro to automate the process.
 
-The API of this crate consists of the `rental` macro, which generates self-referential structs, and a few example instantiations to demonstrate the API provided by such structs (see `RentRef`, `RentMut`, `RentRefMap`, `RentMutMap`).
+The API of this crate consists of the `rental` macro, which generates safe self-referential structs, and a few example instantiations to demonstrate the API provided by such structs (see `RentRef`, `RentMut`, `RentRefMap`, `RentMutMap`).
 
 # Use Cases
 One instance where this crate is useful is when working with `libloading`. That crate provides a `Library` struct that defines methods to borrow `Symbol`s from it. These symbols are bounded by the lifetime of the library, and are thus considered a borrow. Under normal circumstances, one would be unable to store both the library and the symbols within a single struct, but the macro defined in this crate allows you to define a struct that is capable of storing both simultaneously, like so:
