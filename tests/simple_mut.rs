@@ -16,7 +16,7 @@ rental! {
 	mod rentals {
 		use super::*;
 
-		#[rental_mut(deref_mut_suffix)]
+		#[rental_mut]
 		pub struct SimpleMut {
 			foo: Box<Foo>,
 			iref: &'foo mut i32,
@@ -50,8 +50,6 @@ fn read() {
 
 	let iref: &i32 = sm.ref_rent(|iref| *iref);
 	assert_eq!(*iref, 5);
-
-	assert_eq!(*sm, 5);
 }
 
 
@@ -66,7 +64,4 @@ fn write() {
 		*iref = 12;
 		assert_eq!(*iref, 12);
 	}
-
-	*sm = 47;
-	assert_eq!(*sm, 47);
 }

@@ -9,14 +9,14 @@ rental! {
 	pub mod rent_vec_slice {
 		use super::*;
 
-		#[rental(deref_suffix)]
+		#[rental]
 		pub struct OwnedSlice {
 			#[target_ty_hack = "[u8]"]
 			buffer: MyVec<u8>,
 			slice: &'buffer [u8],
 		}
 
-		#[rental_mut(deref_mut_suffix)]
+		#[rental_mut]
 		pub struct OwnedMutSlice {
 			#[target_ty_hack = "[u8]"]
 			buffer: MyVec<u8>,
@@ -39,7 +39,7 @@ fn read() {
 	let rvec = rent_vec_slice::OwnedSlice::new(vec, |slice| slice);
 
 	assert_eq!(rvec.rent(|slice| slice[1]), 2);
-	assert_eq!(rvec.rent(|slice| slice[1]), rvec[1]);
+	assert_eq!(rvec.rent(|slice| slice[1]), rvec.rent(|slice| slice[1]));
 }
 
 
@@ -48,7 +48,7 @@ fn write() {
 	let vec = vec![1, 2, 3];
 	let mut rvec = rent_vec_slice::OwnedMutSlice::new(vec, |slice| slice);
 
-	rvec[1] = 4;
+	rvec.rent_mut(|slice| slice[1] = 4);
 	assert_eq!(rvec.rent(|slice| slice[1]), 4);
-	assert_eq!(rvec.rent(|slice| slice[1]), rvec[1]);
+	assert_eq!(rvec.rent(|slice| slice[1]), rvec.rent(|slice| slice[1]));
 }

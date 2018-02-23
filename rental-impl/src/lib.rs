@@ -326,6 +326,15 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			None
 		});
 
+		let target_ty_hack_erased = target_ty_hack.as_ref().map(|tth| {
+			let mut eraser = RentalLifetimeEraser{
+				fields: &rfields,
+				used_rlt_args: &mut Vec::new(),
+			};
+
+			syn::fold::fold_type(&mut eraser, tth.clone())
+		});
+
 		rfields.push(RentalField{
 			name: field.ident.unwrap().clone(),
 			orig_ty: field.ty.clone(),
@@ -340,6 +349,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			self_rlt_args: self_rlt_args,
 			used_rlt_args: used_rlt_args,
 			target_ty_hack: target_ty_hack,
+			target_ty_hack_erased: target_ty_hack_erased,
 		});
 	}
 	let fields = rfields;
@@ -365,16 +375,19 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		syn::GenericParam::Lifetime(..) => unreachable!(),
 	}).collect::<Vec<_>>();
 
-	let struct_fake_rlt_arg = &syn::LifetimeDef::new(syn::Lifetime::new(Term::intern("'__a"), Span::def_site()));
-	let struct_fake_rlt_args = &iter::repeat(struct_fake_rlt_arg).take(struct_rlt_args.len()).collect::<Vec<_>>();
-
 	let rental_trait_ident = syn::Ident::new(&format!("Rental{}", struct_rlt_args.len()), Span::def_site());
 	let field_idents = &fields.iter().map(|field| &field.name).collect::<Vec<_>>();
 	let local_idents = field_idents;
 
+	let (ref self_ref_param, ref self_mut_param, ref self_move_param, ref self_arg) = if is_deref_suffix {
+		(quote!(_self: &Self), quote!(_self: &mut Self), quote!(_self: Self), quote!(_self))
+	} else {
+		(quote!(&self), quote!(&mut self), quote!(self), quote!(self))
+	};
+
 	let borrow_ident = syn::Ident::new(&(struct_info.ident.to_string() + "_Borrow"), Span::call_site());
 	let borrow_mut_ident = syn::Ident::new(&(struct_info.ident.to_string() + "_BorrowMut"), Span::call_site());
-	let borrow_quotes = &make_borrow_quotes(&fields, is_rental_mut);
+	let borrow_quotes = &make_borrow_quotes(self_arg, &fields, is_rental_mut);
 	let borrow_tys = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty, ..}| ty).collect::<Vec<_>>();
 	let borrow_ty_hacks = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty_hack, ..}| ty_hack).collect::<Vec<_>>();
 	let borrow_suffix_ty = &borrow_tys[fields.len() - 1];
@@ -449,13 +462,13 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 
 	let borrow_struct = syn::ItemStruct{
 		ident: borrow_ident.clone(),
-		vis: struct_info.vis.clone(),
+		vis: item_vis.clone(),
 		attrs: Vec::with_capacity(0),
 		fields: syn::Fields::Named(syn::FieldsNamed{
 			brace_token: Default::default(),
 			named: fields.iter().zip(borrow_tys).enumerate().map(|(idx, (field, borrow_ty))| {
 				let mut field = field.erased.clone();
-				field.vis = if !is_rental_mut || idx == fields.len() - 1 { (*item_vis).clone() } else { syn::Visibility::Inherited };
+				field.vis = if !is_rental_mut || idx == fields.len() - 1 { item_vis.clone() } else { syn::Visibility::Inherited };
 				field.ty = syn::parse::<syn::Type>((**borrow_ty).clone().into()).unwrap();
 				field
 			}).collect(),
@@ -619,21 +632,21 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Return lifetime-erased shared borrows of the fields of the struct.
 			///
 			/// This is unsafe because the erased lifetimes are fake. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
-			pub unsafe fn borrow_erased<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::Borrow {
+			pub unsafe fn borrow_erased(#self_ref_param) -> <Self as __rental_prelude::#rental_trait_ident>::Borrow {
 				#borrow_ident::unify_hack_tys(#(__rental_prelude::transmute(#borrow_exprs),)*)
 			}
 
 			/// Return a lifetime-erased mutable borrow of the suffix of the struct.
 			///
 			/// This is unsafe because the erased lifetimes are fake. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
-			pub unsafe fn borrow_mut_erased<#struct_fake_rlt_arg>(&#struct_fake_rlt_arg mut self) -> <Self as __rental_prelude::#rental_trait_ident<#(#struct_fake_rlt_args),*>>::BorrowMut {
+			pub unsafe fn borrow_mut_erased(#self_mut_param) -> <Self as __rental_prelude::#rental_trait_ident>::BorrowMut {
 				#borrow_mut_ident::unify_hack_tys(#(__rental_prelude::transmute(#borrow_mut_exprs),)*)
 			}
 
 			/// Execute a closure on the shared suffix of the struct.
 			///
 			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
-			pub fn rent<__F, __R>(&self, f: __F) -> __R where
+			pub fn rent<__F, __R>(#self_ref_param, f: __F) -> __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
@@ -643,7 +656,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Execute a closure on the mutable suffix of the struct.
 			///
 			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
-			pub fn rent_mut<__F, __R>(&mut self, f: __F) -> __R where
+			pub fn rent_mut<__F, __R>(#self_mut_param, f: __F) -> __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
@@ -653,7 +666,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Return a shared reference from the shared suffix of the struct.
 			///
 			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-			pub fn ref_rent<__F, __R>(&self, f: __F) -> &__R where
+			pub fn ref_rent<__F, __R>(#self_ref_param, f: __F) -> &__R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> &#last_rlt_arg __R,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
@@ -663,7 +676,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Optionally return a shared reference from the shared suffix of the struct.
 			///
 			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-			pub fn maybe_ref_rent<__F, __R>(&self, f: __F) -> __rental_prelude::Option<&__R> where
+			pub fn maybe_ref_rent<__F, __R>(#self_ref_param, f: __F) -> __rental_prelude::Option<&__R> where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg __R>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
@@ -673,7 +686,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Try to return a shared reference from the shared suffix of the struct, or an error on failure.
 			///
 			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-			pub fn try_ref_rent<__F, __R, __E>(&self, f: __F) -> __rental_prelude::Result<&__R, __E> where
+			pub fn try_ref_rent<__F, __R, __E>(#self_ref_param, f: __F) -> __rental_prelude::Result<&__R, __E> where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
@@ -683,7 +696,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Return a mutable reference from the mutable suffix of the struct.
 			///
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-			pub fn ref_rent_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
+			pub fn ref_rent_mut<__F, __R>(#self_mut_param, f: __F) -> &mut __R where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> &#last_rlt_arg  mut __R,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
@@ -693,7 +706,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Optionally return a mutable reference from the mutable suffix of the struct.
 			///
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-			pub fn maybe_ref_rent_mut<__F, __R>(&mut self, f: __F) -> __rental_prelude::Option<&mut __R> where
+			pub fn maybe_ref_rent_mut<__F, __R>(#self_mut_param, f: __F) -> __rental_prelude::Option<&mut __R> where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg  mut __R>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
@@ -703,7 +716,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Try to return a mutable reference from the mutable suffix of the struct, or an error on failure.
 			///
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-			pub fn try_ref_rent_mut<__F, __R, __E>(&mut self, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
+			pub fn try_ref_rent_mut<__F, __R, __E>(#self_mut_param, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
 				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg  mut __R, __E>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
@@ -711,8 +724,8 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			}
 
 			/// Drop the rental struct and return the original head value to you.
-			pub fn into_head(mut self) -> #head_ty {
-				let Self{#head_ident, ..} = self;
+			pub fn into_head(#self_move_param) -> #head_ty {
+				let Self{#head_ident, ..} = #self_arg;
 				#head_ident
 			}
 		}
@@ -723,88 +736,88 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			#[allow(dead_code)]
 			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
 				/// Return a shared reference to the head field of the struct.
-				pub fn head(&self) -> &<#head_ty as __rental_prelude::Deref>::Target {
-					&*self.#head_ident
+				pub fn head(#self_ref_param) -> &<#head_ty as __rental_prelude::Deref>::Target {
+					&*#self_arg.#head_ident
 				}
 
 				/// Execute a closure on shared borrows of the fields of the struct.
 				///
 				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
-				pub fn rent_all<__F, __R>(&self, f: __F) -> __R where
+				pub fn rent_all<__F, __R>(#self_ref_param, f: __F) -> __R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_erased() })
+					f(unsafe { #item_ident::borrow_erased(#self_arg) })
 				}
 
 				/// Return a shared reference from shared borrows of the fields of the struct.
 				///
 				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-				pub fn ref_rent_all<__F, __R>(&self, f: __F) -> &__R where
+				pub fn ref_rent_all<__F, __R>(#self_ref_param, f: __F) -> &__R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg __R,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_erased() })
+					f(unsafe { #item_ident::borrow_erased(#self_arg) })
 				}
 
 				/// Optionally return a shared reference from shared borrows of the fields of the struct.
 				///
 				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-				pub fn maybe_ref_rent_all<__F, __R>(&self, f: __F) -> __rental_prelude::Option<&__R> where
+				pub fn maybe_ref_rent_all<__F, __R>(#self_ref_param, f: __F) -> __rental_prelude::Option<&__R> where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg __R>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_erased() })
+					f(unsafe { #item_ident::borrow_erased(#self_arg) })
 				}
 
 				/// Try to return a shared reference from shared borrows of the fields of the struct, or an error on failure.
 				///
 				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-				pub fn try_ref_rent_all<__F, __R, __E>(&self, f: __F) -> __rental_prelude::Result<&__R, __E> where
+				pub fn try_ref_rent_all<__F, __R, __E>(#self_ref_param, f: __F) -> __rental_prelude::Result<&__R, __E> where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_erased() })
+					f(unsafe { #item_ident::borrow_erased(#self_arg) })
 				}
 
 				/// Execute a closure on shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
 				///
 				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
-				pub fn rent_all_mut<__F, __R>(&mut self, f: __F) -> __R where
+				pub fn rent_all_mut<__F, __R>(#self_mut_param, f: __F) -> __R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_mut_erased() })
+					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
 				}
 
 				/// Return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
 				///
 				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-				pub fn ref_rent_all_mut<__F, __R>(&mut self, f: __F) -> &mut __R where
+				pub fn ref_rent_all_mut<__F, __R>(#self_mut_param, f: __F) -> &mut __R where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg mut __R,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_mut_erased() })
+					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
 				}
 
 				/// Optionally return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
 				///
 				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-				pub fn maybe_ref_rent_all_mut<__F, __R>(&mut self, f: __F) -> __rental_prelude::Option<&mut __R> where
+				pub fn maybe_ref_rent_all_mut<__F, __R>(#self_mut_param, f: __F) -> __rental_prelude::Option<&mut __R> where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg mut __R>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_mut_erased() })
+					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
 				}
 
 				/// Try to return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct, or an error on failure.
 				///
 				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
-				pub fn try_ref_rent_all_mut<__F, __R, __E>(&mut self, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
+				pub fn try_ref_rent_all_mut<__F, __R, __E>(#self_mut_param, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg mut __R, __E>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { self.borrow_mut_erased() })
+					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
 				}
 			}
 		).to_tokens(tokens);
@@ -814,7 +827,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		quote_spanned!(struct_info.ident.span.resolved_at(Span::def_site()) =>
 			impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause {
 				fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
-					unsafe { __rental_prelude::fmt::Debug::fmt(&self.borrow_erased(), f) }
+					unsafe { __rental_prelude::fmt::Debug::fmt(&#item_ident::borrow_erased(self), f) }
 				}
 			}
 		).to_tokens(tokens);
@@ -851,7 +864,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					type Target = <#suffix_field_ty as __rental_prelude::Deref>::Target;
 
 					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
-						self.ref_rent(|suffix| &**suffix.into_suffix())
+						#item_ident::ref_rent(self, |suffix| &**suffix.into_suffix())
 					}
 				}
 			).to_tokens(tokens);
@@ -861,7 +874,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			quote_spanned!(suffix_ty_span =>
 				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
 					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
-						self.ref_rent_mut(|suffix| &mut **suffix.into_suffix())
+						#item_ident.ref_rent_mut(self, |suffix| &mut **suffix.into_suffix())
 					}
 				}
 			).to_tokens(tokens);
@@ -897,7 +910,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					type Target = <#suffix_field_ty as __rental_prelude::Deref>::Target;
 
 					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
-						self.ref_rent(|suffix| &**suffix)
+						#item_ident::ref_rent(self, |suffix| &**suffix)
 					}
 				}
 			).to_tokens(tokens);
@@ -907,7 +920,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			quote_spanned!(suffix_ty_span =>
 				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
 					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
-						self.ref_rent_mut(|suffix| &mut **suffix)
+						#item_ident::ref_rent_mut(self, |suffix| &mut **suffix)
 					}
 				}
 			).to_tokens(tokens);
@@ -936,17 +949,24 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 }
 
 
-fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
+fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
 	(0 .. fields.len()).map(|idx| {
 		let (field_ty, deref) = if idx == fields.len() - 1 {
 			let orig_ty = &fields[idx].orig_ty;
-			(quote!(#orig_ty), quote!())
+			(
+				quote!(#orig_ty),
+				quote!()
+			)
 		} else {
 			let orig_ty = &fields[idx].orig_ty;
-			(quote!(<#orig_ty as __rental_prelude::Deref>::Target), quote!(*))
+			(
+				quote!(<#orig_ty as __rental_prelude::Deref>::Target),
+				quote!(*)
+			)
 		};
 
 		let field_ty_hack = fields[idx].target_ty_hack.as_ref().unwrap_or(&fields[idx].orig_ty);
+		let field_ty_hack_erased = fields[idx].target_ty_hack_erased.as_ref().unwrap_or(&fields[idx].erased.ty);
 
 		if let Some(ref subrental) = fields[idx].subrental {
 			let field_ident = &fields[idx].name;
@@ -998,8 +1018,7 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 					quote!(__rental_prelude::PhantomData<#borrow_ty_hack<#(#field_rlt_args,)* #(#field_args),*>>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
-					//quote!(unsafe { (#deref self.#field_ident).borrow_erased() })
-					quote!(unsafe { (#deref self.#field_ident).borrow_erased() })
+					quote!(unsafe { <#field_ty_hack_erased>::borrow_erased(&#deref #self_arg.#field_ident) })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -1019,10 +1038,9 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 					quote!(__rental_prelude::PhantomData<#borrow_mut_ty_hack<#(#field_rlt_args,)* #(#field_args),*>>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
-					//quote!(unsafe { (#deref self.#field_ident).borrow_mut_erased() })
-					quote!(unsafe { (#deref self.#field_ident).borrow_mut_erased() })
+					quote!(unsafe { <#field_ty_hack_erased>::borrow_mut_erased(&mut #deref #self_arg.#field_ident) })
 				} else if !is_rental_mut {
-					quote!(unsafe { (#deref self.#field_ident).borrow_erased() })
+					quote!(unsafe { <#field_ty_hack_erased>::borrow_erased(&#deref #self_arg.#field_ident) })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -1035,9 +1053,9 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 					quote!(#borrow_mut_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
 				},
 				new_expr: if !is_rental_mut {
-					quote!(unsafe { (#deref #field_ident).borrow_erased() })
+					quote!(unsafe { <#field_ty_hack_erased>::borrow_erased(&#deref #field_ident) })
 				} else {
-					quote!(unsafe { (#deref #field_ident).borrow_mut_erased() })
+					quote!(unsafe { <#field_ty_hack_erased>::borrow_mut_erased(&mut #deref #field_ident) })
 				},
 			}
 		} else {
@@ -1056,8 +1074,8 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg #field_ty_hack>)
 				},
 				expr: if idx == fields.len() - 1 || !is_rental_mut {
-					//quote!(& #deref self.#field_ident)
-					quote!(&#deref self.#field_ident)
+					//quote!(& #deref #self_arg.#field_ident)
+					quote!(&#deref #self_arg.#field_ident)
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -1077,10 +1095,10 @@ fn make_borrow_quotes(fields: &[RentalField], is_rental_mut: bool) -> Vec<Borrow
 					quote!(__rental_prelude::PhantomData<&#field_rlt_arg mut #field_ty_hack>)
 				},
 				mut_expr: if idx == fields.len() - 1 {
-					//quote!(&mut #deref self.#field_ident)
-					quote!(&mut #deref self.#field_ident)
+					//quote!(&mut #deref #self_arg.#field_ident)
+					quote!(&mut #deref #self_arg.#field_ident)
 				} else if !is_rental_mut {
-					quote!(&#deref self.#field_ident)
+					quote!(&#deref #self_arg.#field_ident)
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -1147,6 +1165,7 @@ struct RentalField {
 	pub self_rlt_args: Vec<syn::Lifetime>,
 	pub used_rlt_args: Vec<syn::Lifetime>,
 	pub target_ty_hack: Option<syn::Type>,
+	pub target_ty_hack_erased: Option<syn::Type>,
 }
 
 

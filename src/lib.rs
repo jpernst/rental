@@ -326,7 +326,7 @@ rental! {
 		/// # use rental::examples::RentRef;
 		/// # fn main() {
 		/// let r = RentRef::new(Box::new(5), |i| &*i);
-		/// assert_eq!(*r, r.rent(|iref| **iref));
+		/// assert_eq!(*r, RentRef::rent(&r, |iref| **iref));
 		/// # }
 		/// ```
 		#[rental(deref_suffix)]
@@ -343,7 +343,7 @@ rental! {
 		/// # fn main() {
 		/// let mut r = RentMut::new(Box::new(5), |i| &mut *i);
 		/// *r = 12;
-		/// assert_eq!(12, r.rent(|iref| **iref));
+		/// assert_eq!(12, RentMut::rent(&mut r, |iref| **iref));
 		/// # }
 		/// ```
 		#[rental_mut(deref_mut_suffix)]
@@ -360,7 +360,7 @@ rental! {
 		/// # fn main() {
 		/// let r = RentRef::new(Box::new(5), |i| &*i);
 		/// let rm = RentRefMap::new(Box::new(r), |r| &**r.suffix);
-		/// assert_eq!(*rm, rm.rent(|iref| **iref));
+		/// assert_eq!(*rm, RentRefMap::rent(&rm, |iref| **iref));
 		/// # }
 		/// ```
 		#[rental(deref_suffix)]
@@ -379,7 +379,7 @@ rental! {
 		/// let mut r = RentMut::new(Box::new(5), |i| &mut *i);
 		/// let mut rm = RentMutMap::new(Box::new(r), |r| &mut **r.suffix);
 		/// *rm = 12;
-		/// assert_eq!(12, rm.rent(|iref| **iref));
+		/// assert_eq!(12, RentMutMap::rent(&mut rm, |iref| **iref));
 		/// # }
 		/// ```
 		#[rental_mut(deref_mut_suffix)]

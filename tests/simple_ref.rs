@@ -28,7 +28,7 @@ rental! {
 	mod rentals {
 		use super::*;
 
-		#[rental(deref_suffix)]
+		#[rental]
 		pub struct SimpleRef {
 			foo: Box<Foo>,
 			fr: FooRef<'foo>,
@@ -73,7 +73,6 @@ fn read() {
 	}
 
 	{
-		assert_eq!(*sr, 5);
 		assert_eq!(sr.head().i, 5);
 		assert_eq!(sr.rent_all(|borrows| borrows.foo.i), 5);
 		assert_eq!(sr.rent_all_mut(|borrows| borrows.foo.i), 5);

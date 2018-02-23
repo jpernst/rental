@@ -16,7 +16,7 @@ rental! {
 	mod rentals {
 		type FooAlias<T> = super::Foo<T>;
 
-		#[rental(deref_suffix)]
+		#[rental]
 		pub struct SimpleRef<T: 'static> {
 			foo: Box<FooAlias<T>>,
 			tref: &'foo T,
@@ -50,6 +50,4 @@ fn read() {
 
 	let tref: &i32 = sr.ref_rent(|tref| *tref);
 	assert_eq!(*tref, 5);
-
-	assert_eq!(*sr, 5);
 }

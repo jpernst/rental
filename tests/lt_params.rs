@@ -17,7 +17,7 @@ rental! {
 	mod rentals {
 		use super::*;
 
-		#[rental(deref_suffix)]
+		#[rental]
 		pub struct LtParam<'a> {
 			foo: Box<Foo<'a>>,
 			iref: &'foo i32,
@@ -60,8 +60,6 @@ fn read() {
 		let iref: &i32 = sr.ref_rent(|iref| *iref);
 		assert_eq!(*iref, 5);
 	}
-
-	assert_eq!(*sr, 5);
 
 	assert_eq!(sr.rent_all_mut(|borrows| *borrows.foo.i), 5);
 }
