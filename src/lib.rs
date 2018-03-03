@@ -112,6 +112,8 @@ pub mod __rental_prelude {
 
 	#[inline(always)]
 	pub fn static_assert_stable_deref<T: StableDeref>() { }
+	#[inline(always)]
+	pub fn static_assert_stable_deref_mut<T: StableDeref>() { } // Should be StableDerefMut, RFC #2349
 }
 
 
@@ -245,68 +247,6 @@ macro_rules! rental {
 
 			#[allow(unused)]
 			#[derive(__rental_structs_and_impls)]
-			enum ProceduralMasqueradeDummyType {
-				Input = (0, stringify!($($body)*)).0
-			}
-		}
-	};
-}
-
-
-/// Identical to the [`rental`](macro.rental.html) macro, but it will accept custom `impl`s for the types that it generates. Do not use this macro unless you need this extra functionality.
-///
-/// This will allow you to add your own methods or trait impls to your rental types, but great care must be taken to maintain the invariants of the rental type. Since the rental lifetimes are erased and replaced with false lifetimes, the compiler will accept seemingly safe impls, even if they violate the true lifetime of the rental fields. This makes adding custom impls very dangerous, and should be done with the utmost caution.
-#[macro_export]
-macro_rules! unsafe_rental_with_impls {
-	{
-		$(#[$attr:meta])*
-		mod $rental_mod:ident {
-			$($body:tt)*
-		}
-	} => {
-		$(#[$attr])*
-		mod $rental_mod {
-			#[allow(unused_imports)]
-			use $crate::__rental_prelude;
-
-			#[allow(unused)]
-			#[derive(__unsafe_rental_structs_and_impls)]
-			enum ProceduralMasqueradeDummyType {
-				Input = (0, stringify!($($body)*)).0
-			}
-		}
-	};
-	{
-		$(#[$attr:meta])*
-		pub mod $rental_mod:ident {
-			$($body:tt)*
-		}
-	} => {
-		$(#[$attr])*
-		pub mod $rental_mod {
-			#[allow(unused_imports)]
-			use $crate::__rental_prelude;
-
-			#[allow(unused)]
-			#[derive(__unsafe_rental_structs_and_impls)]
-			enum ProceduralMasqueradeDummyType {
-				Input = (0, stringify!($($body)*)).0
-			}
-		}
-	};
-	{
-		$(#[$attr:meta])*
-		pub($($vis:tt)*) mod $rental_mod:ident {
-			$($body:tt)*
-		}
-	} => {
-		$(#[$attr])*
-		pub($($vis)*) mod $rental_mod {
-			#[allow(unused_imports)]
-			use $crate::__rental_prelude;
-
-			#[allow(unused)]
-			#[derive(__unsafe_rental_structs_and_impls)]
 			enum ProceduralMasqueradeDummyType {
 				Input = (0, stringify!($($body)*)).0
 			}

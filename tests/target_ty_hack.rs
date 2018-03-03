@@ -11,14 +11,14 @@ rental! {
 
 		#[rental]
 		pub struct OwnedSlice {
-			#[target_ty_hack = "[u8]"]
+			#[target_ty = "[u8]"]
 			buffer: MyVec<u8>,
 			slice: &'buffer [u8],
 		}
 
 		#[rental_mut]
 		pub struct OwnedMutSlice {
-			#[target_ty_hack = "[u8]"]
+			#[target_ty = "[u8]"]
 			buffer: MyVec<u8>,
 			slice: &'buffer mut [u8],
 		}
