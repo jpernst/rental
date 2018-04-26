@@ -12,7 +12,7 @@ extern crate quote;
 use std::iter;
 use syn::spanned::Spanned;
 use quote::ToTokens;
-use proc_macro2::{Span, Term};
+use proc_macro2::Span;
 
 
 define_proc_macros! {
@@ -54,11 +54,13 @@ define_proc_macros! {
 
 
 fn write_rental_traits(tokens: &mut quote::Tokens, max_arity: usize) {
-	let mut lt_params = vec![syn::LifetimeDef::new(syn::Lifetime::new(Term::intern("'a0"), Span::call_site()))];
+	let call_site: Span = Span::call_site();
+
+	let mut lt_params = vec![syn::LifetimeDef::new(syn::Lifetime::new("'a0", call_site))];
 
 	for arity in 2 .. max_arity + 1 {
-		let trait_ident = &syn::Ident::new(&format!("Rental{}", arity), Span::call_site());
-		let lt_param = syn::LifetimeDef::new(syn::Lifetime::new(Term::intern(&format!("'a{}", arity - 1)), Span::call_site()));
+		let trait_ident = &syn::Ident::new(&format!("Rental{}", arity), call_site);
+		let lt_param = syn::LifetimeDef::new(syn::Lifetime::new(&format!("'a{}", arity - 1), call_site));
 		lt_params[arity - 2].bounds.push(lt_param.lifetime.clone());
 		lt_params.push(lt_param);
 
@@ -75,6 +77,9 @@ fn write_rental_traits(tokens: &mut quote::Tokens, max_arity: usize) {
 
 
 fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::ItemStruct) {
+	let def_site: Span = Span::call_site(); // FIXME
+	let call_site: Span = Span::call_site();
+
 	if let syn::Visibility::Inherited = struct_info.vis {
 		panic!("Struct `{}` must be non-private.", struct_info.ident);
 	}
@@ -103,7 +108,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		syn::GenericParam::Lifetime(..) => unreachable!(),
 	}).collect::<Vec<_>>();
 
-	let rental_trait_ident = syn::Ident::new(&format!("Rental{}", struct_rlt_args.len()), Span::def_site());
+	let rental_trait_ident = syn::Ident::new(&format!("Rental{}", struct_rlt_args.len()), def_site);
 	let field_idents = &fields.iter().map(|field| &field.name).collect::<Vec<_>>();
 	let local_idents = field_idents;
 
@@ -113,8 +118,8 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		(quote!(&self), quote!(&mut self), quote!(self), quote!(self))
 	};
 
-	let borrow_ident = syn::Ident::new(&(struct_info.ident.to_string() + "_Borrow"), Span::call_site());
-	let borrow_mut_ident = syn::Ident::new(&(struct_info.ident.to_string() + "_BorrowMut"), Span::call_site());
+	let borrow_ident = syn::Ident::new(&(struct_info.ident.to_string() + "_Borrow"), call_site);
+	let borrow_mut_ident = syn::Ident::new(&(struct_info.ident.to_string() + "_BorrowMut"), call_site);
 	let borrow_quotes = &make_borrow_quotes(self_arg, &fields, attribs.is_rental_mut);
 	let borrow_tys = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty, ..}| ty).collect::<Vec<_>>();
 	let borrow_ty_hacks = &borrow_quotes.iter().map(|&BorrowQuotes{ref ty_hack, ..}| ty_hack).collect::<Vec<_>>();
@@ -153,7 +158,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	let head_ty = &fields[0].orig_ty;
 	let tail_field_tys = &fields.iter().map(|field| &field.erased.ty).skip(1).collect::<Vec<_>>();
 	let tail_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
-	let tail_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(&format!("__F{}", field.name), Span::call_site())).collect::<Vec<_>>();
+	let tail_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(&format!("__F{}", field.name), call_site)).collect::<Vec<_>>();
 	let tail_closure_quotes = make_tail_closure_quotes(&fields, borrow_quotes, attribs.is_rental_mut);
 	let tail_closure_bounds = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref bound, ..}| bound).collect::<Vec<_>>();
 	let tail_closure_exprs = &tail_closure_quotes.iter().map(|&ClosureQuotes{ref expr, ..}| expr).collect::<Vec<_>>();
@@ -203,10 +208,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		}),
 		generics: {
 			let mut gen = struct_generics.clone();
-			gen.params = borrow_lt_params.iter().map(|lt| syn::GenericParam::Lifetime(lt.clone()))
+			let params = borrow_lt_params.iter().map(|lt| syn::GenericParam::Lifetime(lt.clone()))
 				.chain(gen.type_params().map(|p| syn::GenericParam::Type(p.clone())))
 				.chain(gen.const_params().map(|p| syn::GenericParam::Const(p.clone())))
 				.collect();
+			gen.params = params;
 			gen
 		},
 		struct_token: Default::default(),
@@ -228,10 +234,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		}),
 		generics: {
 			let mut gen = struct_generics.clone();
-			gen.params = borrow_lt_params.iter().map(|lt| syn::GenericParam::Lifetime(lt.clone()))
+			let params = borrow_lt_params.iter().map(|lt| syn::GenericParam::Lifetime(lt.clone()))
 				.chain(gen.type_params().map(|p| syn::GenericParam::Type(p.clone())))
 				.chain(gen.const_params().map(|p| syn::GenericParam::Const(p.clone())))
 				.collect();
+			gen.params = params;
 			gen
 		},
 		struct_token: Default::default(),
@@ -241,14 +248,14 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	let static_assert_prefix_stable_derefs = &fields.iter().map(|field| {
 		let prefix_field_ty = &field.erased.ty;
 		if attribs.is_rental_mut {
-			quote_spanned!(field.erased.ty.span().resolved_at(Span::def_site()) => __rental_prelude::static_assert_stable_deref_mut::<#prefix_field_ty>();)
+			quote_spanned!(field.erased.ty.span()/*.resolved_at(def_site)*/ => __rental_prelude::static_assert_stable_deref_mut::<#prefix_field_ty>();)
 		} else {
-			quote_spanned!(field.erased.ty.span().resolved_at(Span::def_site()) => __rental_prelude::static_assert_stable_deref::<#prefix_field_ty>();)
+			quote_spanned!(field.erased.ty.span()/*.resolved_at(def_site)*/ => __rental_prelude::static_assert_stable_deref::<#prefix_field_ty>();)
 		}
 	}).take(fields.len() - 1).collect::<Vec<_>>();
 
-	let struct_span = struct_info.span().resolved_at(Span::def_site());
-	let suffix_ty_span = suffix_field_ty.span().resolved_at(Span::def_site());
+	let struct_span = struct_info.span()/*.resolved_at(def_site)*/;
+	let suffix_ty_span = suffix_field_ty.span()/*.resolved_at(def_site)*/;
 
 	quote_spanned!(struct_span =>
 		#rstruct
@@ -556,7 +563,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	}
 
 	if attribs.is_debug_borrow {
-		quote_spanned!(struct_info.ident.span.resolved_at(Span::def_site()) =>
+		quote_spanned!(struct_info.ident.span()/*.resolved_at(def_site)*/ =>
 			impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause {
 				fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
 					unsafe { __rental_prelude::fmt::Debug::fmt(&#item_ident::borrow_erased(self), f) }
@@ -763,6 +770,9 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 
 
 fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::token::Brace) {
+	let def_site: Span = Span::call_site(); // FIXME
+	let call_site: Span = Span::call_site();
+
 	let (fields, fields_brace) = match struct_info.fields {
 		syn::Fields::Named(ref fields) => (&fields.named, fields.brace_token),
 		syn::Fields::Unnamed(..) => panic!("Struct `{}` must not be a tuple struct.", struct_info.ident),
@@ -801,7 +811,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 					syn::NestedMeta::Meta(syn::Meta::NameValue(syn::MetaNameValue{ref ident, lit: syn::Lit::Int(ref arity), ..})) if ident == "arity" => {
 						subrental = Some(Subrental{
 							arity: arity.value() as usize, 
-							rental_trait_ident: syn::Ident::new(&format!("Rental{}", arity.value()), Span::def_site()),
+							rental_trait_ident: syn::Ident::new(&format!("Rental{}", arity.value()), def_site),
 						})
 					},
 					_ => panic!(
@@ -865,11 +875,11 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 		if let Some(Subrental{arity: sr_arity, ..}) = subrental {
 			let field_ident = field.ident.as_ref().unwrap();
 			for sr_idx in 0 .. sr_arity {
-				self_rlt_args.push(syn::Lifetime::new(Term::intern(&format!("'{}_{}", field_ident, sr_idx)), Span::call_site()));
+				self_rlt_args.push(syn::Lifetime::new(&format!("'{}_{}", field_ident, sr_idx), call_site));
 			}
 		} else {
 			let field_ident = field.ident.as_ref().unwrap();
-			self_rlt_args.push(syn::Lifetime::new(Term::intern(&format!("'{}", field_ident)), Span::call_site()));
+			self_rlt_args.push(syn::Lifetime::new(&format!("'{}", field_ident), call_site));
 		}
 
 		let mut used_rlt_args = Vec::new();
@@ -948,6 +958,8 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 
 
 fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
+	let call_site: Span = Span::call_site();
+
 	(0 .. fields.len()).map(|idx| {
 		let (field_ty, deref) = if idx == fields.len() - 1 {
 			let orig_ty = &fields[idx].orig_ty;
@@ -976,11 +988,11 @@ fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_renta
 				let ty_name = &ty_path.segments[seg_idx].ident.as_ref();
 
 				let mut borrow_ty_path = ty_path.clone();
-				borrow_ty_path.segments[seg_idx].ident = syn::Ident::new(&format!("{}_Borrow", ty_name), Span::call_site());
+				borrow_ty_path.segments[seg_idx].ident = syn::Ident::new(&format!("{}_Borrow", ty_name), call_site);
 				borrow_ty_path.segments[seg_idx].arguments = syn::PathArguments::None;
 
 				let mut borrow_mut_ty_path = ty_path.clone();
-				borrow_mut_ty_path.segments[seg_idx].ident = syn::Ident::new(&format!("{}_BorrowMut", ty_name), Span::call_site());
+				borrow_mut_ty_path.segments[seg_idx].ident = syn::Ident::new(&format!("{}_BorrowMut", ty_name), call_site);
 				borrow_mut_ty_path.segments[seg_idx].arguments = syn::PathArguments::None;
 
 				match ty_path.segments[seg_idx].arguments {
@@ -1210,12 +1222,14 @@ struct RentalLifetimeEraser<'a> {
 
 impl<'a> syn::fold::Fold for RentalLifetimeEraser<'a> {
 	fn fold_lifetime(&mut self, lifetime: syn::Lifetime) -> syn::Lifetime {
+		let def_site: Span = Span::call_site(); // FIXME
+
 		if self.fields.iter().any(|field| field.self_rlt_args.contains(&lifetime)) {
 			if !self.used_rlt_args.contains(&lifetime) {
 				self.used_rlt_args.push(lifetime.clone());
 			}
 
-			syn::Lifetime::new(Term::intern("'static"), Span::def_site())
+			syn::Lifetime::new("'static", def_site)
 		} else {
 			lifetime
 		}
