@@ -3,8 +3,6 @@
 extern crate proc_macro;
 extern crate proc_macro2;
 #[macro_use]
-extern crate procedural_masquerade;
-#[macro_use]
 extern crate syn;
 #[macro_use]
 extern crate quote;
@@ -15,42 +13,105 @@ use quote::ToTokens;
 use proc_macro2::Span;
 
 
-define_proc_macros! {
-	#[doc(hidden)]
-	#[allow(non_snake_case)]
-	pub fn __rental_traits(input: &str) -> String {
-		let mut tokens = quote::Tokens::new();
+// From procedural_masquerade
+#[doc(hidden)]
+fn _extract_input(derive_input: &str) -> &str {
+    let mut input = derive_input;
 
-		let max_arity = input.parse::<usize>().expect("Input must be an integer literal.");
-		write_rental_traits(&mut tokens, max_arity);
+    for expected in &["#[allow(unused)]", "enum", "ProceduralMasqueradeDummyType", "{",
+                     "Input", "=", "(0,", "stringify!", "("] {
+        input = input.trim_left();
+        assert!(input.starts_with(expected),
+                "expected prefix {:?} not found in {:?}", expected, derive_input);
+        input = &input[expected.len()..];
+    }
 
-		tokens.to_string()
-	}
+    for expected in [")", ").0,", "}"].iter().rev() {
+        input = input.trim_right();
+        assert!(input.ends_with(expected),
+                "expected suffix {:?} not found in {:?}", expected, derive_input);
+        let end = input.len() - expected.len();
+        input = &input[..end];
+    }
 
-
-	#[doc(hidden)]
-	#[allow(non_snake_case)]
-	pub fn __rental_structs_and_impls(input: &str) -> String {
-		let mut tokens = quote::Tokens::new();
-
-		for item in syn::parse_str::<syn::File>(input).expect("Failed to parse items in module body.").items.iter() {
-			match *item {
-				syn::Item::Use(..) => {
-					item.to_tokens(&mut tokens);
-				},
-				syn::Item::Type(..) => {
-					item.to_tokens(&mut tokens);
-				},
-				syn::Item::Struct(ref struct_info) => {
-					write_rental_struct_and_impls(&mut tokens, &struct_info);
-				},
-				_ => panic!("Item must be a `use` or `struct`."),
-			}
-		}
-
-		tokens.to_string()
-	}
+    input
 }
+
+
+#[doc(hidden)]
+#[allow(non_snake_case)]
+#[proc_macro_derive(__rental_traits)]
+pub fn __rental_traits(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+	let mut tokens = quote::Tokens::new();
+
+	let max_arity = _extract_input(&input.to_string()).parse::<usize>().expect("Input must be an integer literal.");
+	write_rental_traits(&mut tokens, max_arity);
+
+	tokens.into()
+}
+
+
+#[doc(hidden)]
+#[allow(non_snake_case)]
+#[proc_macro_derive(__rental_structs_and_impls)]
+pub fn __rental_structs_and_impls(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+	let mut tokens = quote::Tokens::new();
+
+	for item in syn::parse_str::<syn::File>(_extract_input(&input.to_string())).expect("Failed to parse items in module body.").items.iter() {
+		match *item {
+			syn::Item::Use(..) => {
+				item.to_tokens(&mut tokens);
+			},
+			syn::Item::Type(..) => {
+				item.to_tokens(&mut tokens);
+			},
+			syn::Item::Struct(ref struct_info) => {
+				write_rental_struct_and_impls(&mut tokens, &struct_info);
+			},
+			_ => panic!("Item must be a `use` or `struct`."),
+		}
+	}
+
+	tokens.into()
+}
+
+
+//define_proc_macros! {
+//	#[doc(hidden)]
+//	#[allow(non_snake_case)]
+//	pub fn __rental_traits(input: &str) -> String {
+//		let mut tokens = quote::Tokens::new();
+//
+//		let max_arity = input.parse::<usize>().expect("Input must be an integer literal.");
+//		write_rental_traits(&mut tokens, max_arity);
+//
+//		tokens.to_string()
+//	}
+
+
+//	#[doc(hidden)]
+//	#[allow(non_snake_case)]
+//	pub fn __rental_structs_and_impls(input: &str) -> String {
+//		let mut tokens = quote::Tokens::new();
+//
+//		for item in syn::parse_str::<syn::File>(input).expect("Failed to parse items in module body.").items.iter() {
+//			match *item {
+//				syn::Item::Use(..) => {
+//					item.to_tokens(&mut tokens);
+//				},
+//				syn::Item::Type(..) => {
+//					item.to_tokens(&mut tokens);
+//				},
+//				syn::Item::Struct(ref struct_info) => {
+//					write_rental_struct_and_impls(&mut tokens, &struct_info);
+//				},
+//				_ => panic!("Item must be a `use` or `struct`."),
+//			}
+//		}
+//
+//		tokens.to_string()
+//	}
+//}
 
 
 fn write_rental_traits(tokens: &mut quote::Tokens, max_arity: usize) {
