@@ -95,6 +95,7 @@ macro_rules! define_rental_traits {
 #[doc(hidden)]
 pub mod __rental_prelude {
 	pub use core::marker::PhantomData;
+	pub use core::clone::Clone;
 	pub use core::ops::{Deref, DerefMut, Drop};
 	pub use core::convert::{AsRef, AsMut, Into};
 	pub use core::borrow::{Borrow, BorrowMut};
@@ -102,7 +103,7 @@ pub mod __rental_prelude {
 	pub use core::result::Result;
 	pub use core::option::Option;
 	pub use core::fmt;
-	pub use stable_deref_trait::StableDeref;
+	pub use stable_deref_trait::{StableDeref, CloneStableDeref};
 
 	pub use super::{IntoSuffix, TryNewError, TryNewResult};
 
@@ -113,7 +114,9 @@ pub mod __rental_prelude {
 	#[inline(always)]
 	pub fn static_assert_stable_deref<T: StableDeref>() { }
 	#[inline(always)]
-	pub fn static_assert_stable_deref_mut<T: StableDeref>() { } // Should be StableDerefMut, RFC #2349
+	pub fn static_assert_mut_stable_deref<T: DerefMut + StableDeref>() { }
+	#[inline(always)]
+	pub fn static_assert_clone_stable_deref<T: CloneStableDeref>() { }
 }
 
 
