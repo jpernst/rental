@@ -633,53 +633,53 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		).to_tokens(tokens);
 	}
 
-//	if fields[fields.len() - 1].subrental.is_some() {
-//		quote_spanned!(struct_span =>
-//			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
-//				type Suffix = <#borrow_suffix_ty as IntoSuffix>::Suffix;
-//
-//				#[allow(non_shorthand_field_patterns)]
-//				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
-//					let #borrow_ident{#suffix_ident: suffix, ..};
-//					suffix.into_suffix()
-//				}
-//			}
-//		).to_tokens(tokens);
-//
-//		quote_spanned!(struct_span =>
-//			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
-//				type Suffix = <#borrow_mut_suffix_ty as IntoSuffix>::Suffix;
-//
-//				#[allow(non_shorthand_field_patterns)]
-//				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
-//					let #borrow_mut_ident{#suffix_ident: suffix, ..};
-//					suffix.into_suffix()
-//				}
-//			}
-//		).to_tokens(tokens);
-//
-//		if attribs.is_deref_suffix {
-//			quote_spanned!(suffix_ty_span =>
-//				impl #struct_impl_params __rental_prelude::Deref for #item_ident #struct_impl_args #struct_where_clause {
-//					type Target = <#suffix_ty as __rental_prelude::Deref>::Target;
-//
-//					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
-//						#item_ident::ref_rent(self, |suffix| &**suffix.into_suffix())
-//					}
-//				}
-//			).to_tokens(tokens);
-//		}
-//
-//		if attribs.is_deref_mut_suffix {
-//			quote_spanned!(suffix_ty_span =>
-//				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
-//					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
-//						#item_ident.ref_rent_mut(self, |suffix| &mut **suffix.into_suffix())
-//					}
-//				}
-//			).to_tokens(tokens);
-//		}
-//	} else {
+	if fields[fields.len() - 1].subrental.is_some() {
+		quote_spanned!(struct_span =>
+			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
+				type Suffix = <#borrow_suffix_ty as __rental_prelude::IntoSuffix>::Suffix;
+
+				#[allow(non_shorthand_field_patterns)]
+				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+					let #borrow_ident{#suffix_ident: suffix, ..};
+					suffix.into_suffix()
+				}
+			}
+		).to_tokens(tokens);
+
+		quote_spanned!(struct_span =>
+			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
+				type Suffix = <#borrow_mut_suffix_ty as __rental_prelude::IntoSuffix>::Suffix;
+
+				#[allow(non_shorthand_field_patterns)]
+				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+					let #borrow_mut_ident{#suffix_ident: suffix, ..};
+					suffix.into_suffix()
+				}
+			}
+		).to_tokens(tokens);
+
+		if attribs.is_deref_suffix {
+			quote_spanned!(suffix_ty_span =>
+				impl #struct_impl_params __rental_prelude::Deref for #item_ident #struct_impl_args #struct_where_clause {
+					type Target = <#suffix_ty as __rental_prelude::Deref>::Target;
+
+					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
+						#item_ident::ref_rent(self, |suffix| &**__rental_prelude::IntoSuffix::into_suffix(suffix))
+					}
+				}
+			).to_tokens(tokens);
+		}
+
+		if attribs.is_deref_mut_suffix {
+			quote_spanned!(suffix_ty_span =>
+				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
+					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
+						#item_ident.ref_rent_mut(self, |suffix| &mut **__rental_prelude::IntoSuffix::into_suffix(suffix))
+					}
+				}
+			).to_tokens(tokens);
+		}
+	} else {
 		quote_spanned!(struct_span =>
 			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
 				type Suffix = #borrow_suffix_ty;
@@ -725,7 +725,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				}
 			).to_tokens(tokens);
 		}
-//	}
+	}
 
 	if attribs.is_deref_suffix {
 		quote_spanned!(suffix_ty_span =>
@@ -942,9 +942,9 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 			rfattribs.remove(sr_pos);
 		}
 
-		if subrental.is_some() && field_idx > 0 {
+		if subrental.is_some() && field_idx == fields.len() - 1 {
 			panic!(
-				"`subrental` attribute on struct `{}` field `{}` is not allowed; it is not the head field.",
+				"struct `{}` field `{}` cannot be a subrental because it is the suffix field.",
 				struct_info.ident,
 				field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 			);
@@ -1125,39 +1125,39 @@ fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_renta
 			};
 
 			BorrowQuotes {
-				ty: if /*idx == fields.len() - 1 ||*/ !is_rental_mut {
+				ty: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow)
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow>)
 				},
-				ty_hack: if /*idx == fields.len() - 1 ||*/ !is_rental_mut {
+				ty_hack: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(#borrow_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
 				} else {
 					quote!(__rental_prelude::PhantomData<#borrow_ty_hack<#(#field_rlt_args,)* #(#field_args),*>>)
 				},
-				expr: if /*idx == fields.len() - 1 ||*/ !is_rental_mut {
+				expr: if idx == fields.len() - 1 || !is_rental_mut {
 					quote!(unsafe { <#field_ty_hack_erased>::all_erased(&#deref #self_arg.#field_ident) })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
 
-				mut_ty: /*if idx == fields.len() - 1 {
+				mut_ty: if idx == fields.len() - 1 {
 					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut)
-				} else*/ if !is_rental_mut {
+				} else if !is_rental_mut {
 					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow)
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut>)
 				},
-				mut_ty_hack: /*if idx == fields.len() - 1 {
+				mut_ty_hack: if idx == fields.len() - 1 {
 					quote!(#borrow_mut_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
-				} else*/ if !is_rental_mut {
+				} else if !is_rental_mut {
 					quote!(#borrow_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
 				} else {
 					quote!(__rental_prelude::PhantomData<#borrow_mut_ty_hack<#(#field_rlt_args,)* #(#field_args),*>>)
 				},
-				mut_expr: /*if idx == fields.len() - 1 {
+				mut_expr: if idx == fields.len() - 1 {
 					quote!(unsafe { <#field_ty_hack_erased>::all_mut_erased(&mut #deref #self_arg.#field_ident) })
-				} else*/ if !is_rental_mut {
+				} else if !is_rental_mut {
 					quote!(unsafe { <#field_ty_hack_erased>::all_erased(&#deref #self_arg.#field_ident) })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
