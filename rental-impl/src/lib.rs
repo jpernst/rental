@@ -116,6 +116,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 
 	let item_ident = &struct_info.ident;
 	let item_vis = &struct_info.vis;
+	let item_ident_str = syn::LitStr::new(&item_ident.to_string(), item_ident.span());
 
 	let (struct_impl_params, struct_impl_args, struct_where_clause) = struct_generics.split_for_impl();
 	let where_extra = if let Some(ref struct_where_clause) = struct_where_clause {
@@ -142,6 +143,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	let rental_trait_ident = syn::Ident::new(&format!("Rental{}", struct_rlt_args.len()), def_site);
 	let field_idents = &fields.iter().map(|field| &field.name).collect::<Vec<_>>();
 	let local_idents = field_idents;
+	let field_ident_strs = &field_idents.iter().map(|ident| syn::LitStr::new(&ident.to_string(), ident.span())).collect::<Vec<_>>();
 
 	let (ref self_ref_param, ref self_mut_param, ref self_move_param, ref self_arg) = if attribs.is_deref_suffix {
 		(quote!(_self: &Self), quote!(_self: &mut Self), quote!(_self: Self), quote!(_self))
@@ -184,10 +186,11 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			lt_def
 		})).collect::<Vec<_>>();
 
+	let field_tys = &fields.iter().map(|field| &field.erased.ty).collect::<Vec<_>>();
 	let head_ident = &local_idents[0];
 	let head_ident_rep = &iter::repeat(&head_ident).take(fields.len() - 1).collect::<Vec<_>>();
 	let head_ty = &fields[0].orig_ty;
-	let tail_tys = &fields.iter().map(|field| &field.erased.ty).skip(1).collect::<Vec<_>>();
+	let tail_tys = &field_tys.iter().skip(1).collect::<Vec<_>>();
 	let tail_idents = &local_idents.iter().skip(1).collect::<Vec<_>>();
 	let tail_closure_tys = &fields.iter().skip(1).map(|field| syn::Ident::new(&format!("__F{}", field.name), call_site)).collect::<Vec<_>>();
 	let tail_closure_quotes = make_tail_closure_quotes(&fields, borrow_quotes, attribs.is_rental_mut);
@@ -198,12 +201,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	let suffix_ident = &field_idents[fields.len() - 1];
 	let suffix_ty = &fields[fields.len() - 1].erased.ty;
 	let suffix_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
-
-	let borrow_derives = if attribs.is_derive_debug {
-		quote!(#[derive(Debug)])
-	} else {
-		quote!()
-	};
+	let suffix_ident_str = syn::LitStr::new(&suffix_ident.to_string(), suffix_ident.span());
 
 	let rstruct = syn::ItemStruct{
 		ident: struct_info.ident.clone(),
@@ -294,12 +292,10 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 
 		/// Shared borrow of a rental struct.
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
-		#borrow_derives
 		#borrow_struct
 
 		/// Mutable borrow of a rental struct.
 		#[allow(non_camel_case_types, non_snake_case, dead_code)]
-		#borrow_derives
 		#borrow_mut_struct
 	).to_tokens(tokens);
 
@@ -594,14 +590,34 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		).to_tokens(tokens);
 	}
 
-	if attribs.is_derive_debug {
-		quote_spanned!(struct_info.ident.span()/*.resolved_at(def_site)*/ =>
-			impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause {
-				fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
-					unsafe { __rental_prelude::fmt::Debug::fmt(&#item_ident::borrow_erased(self), f) }
+	if attribs.is_debug {
+		if attribs.is_rental_mut {
+			quote_spanned!(struct_info.ident.span()/*.resolved_at(def_site)*/ =>
+				impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause #where_extra #suffix_ty: __rental_prelude::fmt::Debug {
+					fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
+						unsafe {
+							let erased = #item_ident::borrow_erased(self);
+							f.debug_struct(#item_ident_str)
+								.field(#suffix_ident_str, &erased.#suffix_ident)
+								.finish()
+						}
+					}
 				}
-			}
-		).to_tokens(tokens);
+			).to_tokens(tokens);
+		} else {
+			quote_spanned!(struct_info.ident.span()/*.resolved_at(def_site)*/ =>
+				impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause #where_extra #(#field_tys: __rental_prelude::fmt::Debug),* {
+					fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
+						unsafe {
+							let erased = #item_ident::borrow_erased(self);
+							f.debug_struct(#item_ident_str)
+								#(.field(#field_ident_strs, &erased.#field_idents))*
+								.finish()
+						}
+					}
+				}
+			).to_tokens(tokens);
+		}
 	}
 
 	if attribs.is_clone {
@@ -760,7 +776,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 	let mut rattribs = struct_info.attrs.clone();
 
 	let mut is_rental_mut = false;
-	let mut is_derive_debug = false;
+	let mut is_debug = false;
 	let mut is_clone = false;
 	let mut is_deref_suffix = false;
 	let mut is_deref_mut_suffix = false;
@@ -789,8 +805,8 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 					match *meta {
 						syn::Meta::Word(ref ident) => {
 							match ident.as_ref() {
-								"derive_debug" => {
-									is_derive_debug = true;
+								"debug" => {
+									is_debug = true;
 									false
 								},
 								"clone" => {
@@ -825,7 +841,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 			}).count();
 
 			if leftover > 0 {
-				panic!("Struct `{}` rental attribute takes optional arguments: `derive_debug`, `clone`, `deref_suffix`, and `deref_mut_suffix`.", struct_info.ident);
+				panic!("Struct `{}` rental attribute takes optional arguments: `debug`, `clone`, `deref_suffix`, and `deref_mut_suffix`.", struct_info.ident);
 			}
 
 			true
@@ -848,7 +864,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 	RentalStructAttribs{
 		doc: rattribs,
 		is_rental_mut: is_rental_mut,
-		is_derive_debug: is_derive_debug,
+		is_debug: is_debug,
 		is_clone: is_clone,
 		is_deref_suffix: is_deref_suffix,
 		is_deref_mut_suffix: is_deref_mut_suffix,
@@ -1257,7 +1273,7 @@ fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], is
 struct RentalStructAttribs {
 	pub doc: Vec<syn::Attribute>,
 	pub is_rental_mut: bool,
-	pub is_derive_debug: bool,
+	pub is_debug: bool,
 	pub is_clone: bool,
 	pub is_deref_suffix: bool,
 	pub is_deref_mut_suffix: bool,

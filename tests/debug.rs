@@ -12,10 +12,16 @@ rental! {
 	mod rentals {
 		use super::*;
 
-		#[rental(derive_debug, deref_suffix)]
+		#[rental(debug, deref_suffix)]
 		pub struct SimpleRef {
 			foo: Box<Foo>,
 			iref: &'foo i32,
+		}
+
+		#[rental_mut(debug, deref_suffix)]
+		pub struct SimpleMut {
+			foo: Box<Foo>,
+			iref: &'foo mut i32,
 		}
 	}
 }
@@ -25,6 +31,9 @@ rental! {
 fn print() {
 	let foo = Foo { i: 5 };
 	let sr = rentals::SimpleRef::new(Box::new(foo), |foo| &foo.i);
-
 	println!("{:?}", sr);
+
+	let foo = Foo { i: 5 };
+	let sm = rentals::SimpleMut::new(Box::new(foo), |foo| &mut foo.i);
+	println!("{:?}", sm);
 }
