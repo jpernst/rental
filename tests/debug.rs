@@ -12,7 +12,7 @@ rental! {
 	mod rentals {
 		use super::*;
 
-		#[rental(debug_borrow, deref_suffix)]
+		#[rental(derive_debug, deref_suffix)]
 		pub struct SimpleRef {
 			foo: Box<Foo>,
 			iref: &'foo i32,

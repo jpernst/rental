@@ -115,8 +115,6 @@ pub mod __rental_prelude {
 	pub fn static_assert_stable_deref<T: StableDeref>() { }
 	#[inline(always)]
 	pub fn static_assert_mut_stable_deref<T: DerefMut + StableDeref>() { }
-	#[inline(always)]
-	pub fn static_assert_clone_stable_deref<T: CloneStableDeref>() { }
 }
 
 
