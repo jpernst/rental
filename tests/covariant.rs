@@ -26,6 +26,12 @@ rental! {
 			iref: &'foo i32,
 		}
 
+		#[rental_mut(covariant)]
+		pub struct SimpleMut {
+			foo: Box<Foo>,
+			iref: &'foo mut i32,
+		}
+
 //		#[rental(covariant)]
 //		pub struct ShouldBreak {
 //			foo: Box<Foo>,
