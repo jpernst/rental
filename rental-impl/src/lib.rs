@@ -113,6 +113,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		panic!("Struct `{}` lifetime parameter `{}` collides with rental lifetime.", struct_info.ident, collide);
 	}
 	let last_rlt_arg = &struct_rlt_args[struct_rlt_args.len() - 1];
+	let static_rlt_args = &iter::repeat(syn::Lifetime::new("'static", def_site)).take(struct_rlt_args.len()).collect::<Vec<_>>();
 
 	let item_ident = &struct_info.ident;
 	let item_vis = &struct_info.vis;
@@ -302,7 +303,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	quote_spanned!(struct_span =>
 		#[allow(dead_code)]
 		impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
-			fn unify_hack_tys(#(#local_idents: #borrow_ty_hacks),*) -> #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> {
+			fn unify_tys_hack(#(#local_idents: #borrow_ty_hacks),*) -> #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> {
 				#borrow_ident {
 					#(#field_idents: #local_idents,)*
 				}
@@ -313,7 +314,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	quote_spanned!(struct_span =>
 		#[allow(dead_code)]
 		impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
-			fn unify_hack_tys(#(#local_idents: #borrow_mut_ty_hacks),*) -> #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> {
+			fn unify_tys_hack(#(#local_idents: #borrow_mut_ty_hacks),*) -> #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> {
 				#borrow_mut_ident {
 					#(#field_idents: #local_idents,)*
 				}
@@ -399,15 +400,15 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			/// Return lifetime-erased shared borrows of the fields of the struct.
 			///
 			/// This is unsafe because the erased lifetimes are fake. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
-			pub unsafe fn borrow_erased(#self_ref_param) -> <Self as __rental_prelude::#rental_trait_ident>::Borrow {
-				#borrow_ident::unify_hack_tys(#(__rental_prelude::transmute(#borrow_exprs),)*)
+			pub unsafe fn all_erased(#self_ref_param) -> <Self as __rental_prelude::#rental_trait_ident>::Borrow {
+				#borrow_ident::unify_tys_hack(#(__rental_prelude::transmute(#borrow_exprs),)*)
 			}
 
 			/// Return a lifetime-erased mutable borrow of the suffix of the struct.
 			///
 			/// This is unsafe because the erased lifetimes are fake. Use this only if absolutely necessary and be very mindful of what the true lifetimes are.
-			pub unsafe fn borrow_mut_erased(#self_mut_param) -> <Self as __rental_prelude::#rental_trait_ident>::BorrowMut {
-				#borrow_mut_ident::unify_hack_tys(#(__rental_prelude::transmute(#borrow_mut_exprs),)*)
+			pub unsafe fn all_mut_erased(#self_mut_param) -> <Self as __rental_prelude::#rental_trait_ident>::BorrowMut {
+				#borrow_mut_ident::unify_tys_hack(#(__rental_prelude::transmute(#borrow_mut_exprs),)*)
 			}
 
 			/// Execute a closure on the shared suffix of the struct.
@@ -514,7 +515,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_erased(#self_arg) })
+					f(unsafe { #item_ident::all_erased(#self_arg) })
 				}
 
 				/// Return a shared reference from shared borrows of the fields of the struct.
@@ -524,7 +525,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg __R,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_erased(#self_arg) })
+					f(unsafe { #item_ident::all_erased(#self_arg) })
 				}
 
 				/// Optionally return a shared reference from shared borrows of the fields of the struct.
@@ -534,7 +535,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg __R>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_erased(#self_arg) })
+					f(unsafe { #item_ident::all_erased(#self_arg) })
 				}
 
 				/// Try to return a shared reference from shared borrows of the fields of the struct, or an error on failure.
@@ -544,7 +545,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_erased(#self_arg) })
+					f(unsafe { #item_ident::all_erased(#self_arg) })
 				}
 
 				/// Execute a closure on shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
@@ -554,7 +555,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
+					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
 				}
 
 				/// Return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
@@ -564,7 +565,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg mut __R,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
+					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
 				}
 
 				/// Optionally return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
@@ -574,7 +575,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg mut __R>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
+					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
 				}
 
 				/// Try to return a mutable reference from shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct, or an error on failure.
@@ -584,7 +585,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg mut __R, __E>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
-					f(unsafe { #item_ident::borrow_mut_erased(#self_arg) })
+					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
 				}
 			}
 		).to_tokens(tokens);
@@ -596,7 +597,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause #where_extra #suffix_ty: __rental_prelude::fmt::Debug {
 					fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
 						unsafe {
-							let erased = #item_ident::borrow_erased(self);
+							let erased = #item_ident::all_erased(self);
 							f.debug_struct(#item_ident_str)
 								.field(#suffix_ident_str, &erased.#suffix_ident)
 								.finish()
@@ -609,7 +610,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				impl #struct_impl_params __rental_prelude::fmt::Debug for #item_ident #struct_impl_args #struct_where_clause #where_extra #(#field_tys: __rental_prelude::fmt::Debug),* {
 					fn fmt(&self, f: &mut __rental_prelude::fmt::Formatter) -> __rental_prelude::fmt::Result {
 						unsafe {
-							let erased = #item_ident::borrow_erased(self);
+							let erased = #item_ident::all_erased(self);
 							f.debug_struct(#item_ident_str)
 								#(.field(#field_ident_strs, &erased.#field_idents))*
 								.finish()
@@ -632,53 +633,53 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		).to_tokens(tokens);
 	}
 
-	if fields[fields.len() - 1].subrental.is_some() {
-		quote_spanned!(struct_span =>
-			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
-				type Suffix = <#borrow_suffix_ty as IntoSuffix>::Suffix;
-
-				#[allow(non_shorthand_field_patterns)]
-				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
-					let #borrow_ident{#suffix_ident: suffix, ..};
-					suffix.into_suffix()
-				}
-			}
-		).to_tokens(tokens);
-
-		quote_spanned!(struct_span =>
-			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
-				type Suffix = <#borrow_mut_suffix_ty as IntoSuffix>::Suffix;
-
-				#[allow(non_shorthand_field_patterns)]
-				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
-					let #borrow_mut_ident{#suffix_ident: suffix, ..};
-					suffix.into_suffix()
-				}
-			}
-		).to_tokens(tokens);
-
-		if attribs.is_deref_suffix {
-			quote_spanned!(suffix_ty_span =>
-				impl #struct_impl_params __rental_prelude::Deref for #item_ident #struct_impl_args #struct_where_clause {
-					type Target = <#suffix_ty as __rental_prelude::Deref>::Target;
-
-					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
-						#item_ident::ref_rent(self, |suffix| &**suffix.into_suffix())
-					}
-				}
-			).to_tokens(tokens);
-		}
-
-		if attribs.is_deref_mut_suffix {
-			quote_spanned!(suffix_ty_span =>
-				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
-					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
-						#item_ident.ref_rent_mut(self, |suffix| &mut **suffix.into_suffix())
-					}
-				}
-			).to_tokens(tokens);
-		}
-	} else {
+//	if fields[fields.len() - 1].subrental.is_some() {
+//		quote_spanned!(struct_span =>
+//			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
+//				type Suffix = <#borrow_suffix_ty as IntoSuffix>::Suffix;
+//
+//				#[allow(non_shorthand_field_patterns)]
+//				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+//					let #borrow_ident{#suffix_ident: suffix, ..};
+//					suffix.into_suffix()
+//				}
+//			}
+//		).to_tokens(tokens);
+//
+//		quote_spanned!(struct_span =>
+//			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
+//				type Suffix = <#borrow_mut_suffix_ty as IntoSuffix>::Suffix;
+//
+//				#[allow(non_shorthand_field_patterns)]
+//				fn into_suffix(self) -> <Self as __rental_prelude::IntoSuffix>::Suffix {
+//					let #borrow_mut_ident{#suffix_ident: suffix, ..};
+//					suffix.into_suffix()
+//				}
+//			}
+//		).to_tokens(tokens);
+//
+//		if attribs.is_deref_suffix {
+//			quote_spanned!(suffix_ty_span =>
+//				impl #struct_impl_params __rental_prelude::Deref for #item_ident #struct_impl_args #struct_where_clause {
+//					type Target = <#suffix_ty as __rental_prelude::Deref>::Target;
+//
+//					fn deref(&self) -> &<Self as __rental_prelude::Deref>::Target {
+//						#item_ident::ref_rent(self, |suffix| &**suffix.into_suffix())
+//					}
+//				}
+//			).to_tokens(tokens);
+//		}
+//
+//		if attribs.is_deref_mut_suffix {
+//			quote_spanned!(suffix_ty_span =>
+//				impl #struct_impl_params __rental_prelude::DerefMut for #item_ident #struct_impl_args #struct_where_clause {
+//					fn deref_mut(&mut self) -> &mut <Self as __rental_prelude::Deref>::Target {
+//						#item_ident.ref_rent_mut(self, |suffix| &mut **suffix.into_suffix())
+//					}
+//				}
+//			).to_tokens(tokens);
+//		}
+//	} else {
 		quote_spanned!(struct_span =>
 			impl<#(#borrow_lt_params,)* #(#struct_nonlt_params),*> __rental_prelude::IntoSuffix for #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> #struct_where_clause {
 				type Suffix = #borrow_suffix_ty;
@@ -724,7 +725,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				}
 			).to_tokens(tokens);
 		}
-	}
+//	}
 
 	if attribs.is_deref_suffix {
 		quote_spanned!(suffix_ty_span =>
@@ -748,25 +749,19 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 
 	if attribs.is_covariant {
 		quote_spanned!(struct_info.ident.span()/*.resolved_at(def_site)*/ =>
+			#[allow(dead_code)]
 			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
-				#[allow(dead_code)]
-				#[inline(always)]
-				fn static_assert_covariant(&self) {
+				pub fn all(#self_ref_param) -> <Self as __rental_prelude::#rental_trait_ident>::Borrow {
+					unsafe {
+						__rental_prelude::transmute::<_, #borrow_ident<#(#static_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>>(#item_ident::all_erased(#self_arg))
+					}
 				}
 
-//				pub fn borrow(&self) -> #borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> {
-//				}
+				pub fn suffix(#self_ref_param) -> <<Self as __rental_prelude::#rental_trait_ident>::Borrow as __rental_prelude::IntoSuffix>::Suffix {
+					&#self_arg.#suffix_ident
+				}
 			}
 		).to_tokens(tokens);
-
-		if attribs.is_rental_mut {
-			quote_spanned!(struct_info.ident.span()/*.resolved_at(def_site)*/ =>
-				impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
-//					pub fn borrow_mut(&self) -> #borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*> {
-//					}
-				}
-			).to_tokens(tokens);
-		}
 	}
 }
 
@@ -947,6 +942,14 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 			rfattribs.remove(sr_pos);
 		}
 
+		if subrental.is_some() && field_idx > 0 {
+			panic!(
+				"`subrental` attribute on struct `{}` field `{}` is not allowed; it is not the head field.",
+				struct_info.ident,
+				field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+			);
+		}
+
 		if let Some(tth_pos) = rfattribs.iter().position(|a|
 			match a.interpret_meta() {
 				Some(syn::Meta::NameValue(syn::MetaNameValue{ref ident, lit: syn::Lit::Str(ref ty_str), ..})) if ident == "target_ty" => {
@@ -1122,40 +1125,40 @@ fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_renta
 			};
 
 			BorrowQuotes {
-				ty: if idx == fields.len() - 1 || !is_rental_mut {
+				ty: if /*idx == fields.len() - 1 ||*/ !is_rental_mut {
 					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow)
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow>)
 				},
-				ty_hack: if idx == fields.len() - 1 || !is_rental_mut {
+				ty_hack: if /*idx == fields.len() - 1 ||*/ !is_rental_mut {
 					quote!(#borrow_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
 				} else {
 					quote!(__rental_prelude::PhantomData<#borrow_ty_hack<#(#field_rlt_args,)* #(#field_args),*>>)
 				},
-				expr: if idx == fields.len() - 1 || !is_rental_mut {
-					quote!(unsafe { <#field_ty_hack_erased>::borrow_erased(&#deref #self_arg.#field_ident) })
+				expr: if /*idx == fields.len() - 1 ||*/ !is_rental_mut {
+					quote!(unsafe { <#field_ty_hack_erased>::all_erased(&#deref #self_arg.#field_ident) })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
 
-				mut_ty: if idx == fields.len() - 1 {
+				mut_ty: /*if idx == fields.len() - 1 {
 					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut)
-				} else if !is_rental_mut {
+				} else*/ if !is_rental_mut {
 					quote!(<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::Borrow)
 				} else {
 					quote!(__rental_prelude::PhantomData<<#field_ty as __rental_prelude::#rental_trait_ident<#(#field_rlt_args),*>>::BorrowMut>)
 				},
-				mut_ty_hack: if idx == fields.len() - 1 {
+				mut_ty_hack: /*if idx == fields.len() - 1 {
 					quote!(#borrow_mut_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
-				} else if !is_rental_mut {
+				} else*/ if !is_rental_mut {
 					quote!(#borrow_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
 				} else {
 					quote!(__rental_prelude::PhantomData<#borrow_mut_ty_hack<#(#field_rlt_args,)* #(#field_args),*>>)
 				},
-				mut_expr: if idx == fields.len() - 1 {
-					quote!(unsafe { <#field_ty_hack_erased>::borrow_mut_erased(&mut #deref #self_arg.#field_ident) })
-				} else if !is_rental_mut {
-					quote!(unsafe { <#field_ty_hack_erased>::borrow_erased(&#deref #self_arg.#field_ident) })
+				mut_expr: /*if idx == fields.len() - 1 {
+					quote!(unsafe { <#field_ty_hack_erased>::all_mut_erased(&mut #deref #self_arg.#field_ident) })
+				} else*/ if !is_rental_mut {
+					quote!(unsafe { <#field_ty_hack_erased>::all_erased(&#deref #self_arg.#field_ident) })
 				} else {
 					quote!(__rental_prelude::PhantomData::<()>)
 				},
@@ -1168,9 +1171,9 @@ fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_renta
 					quote!(#borrow_mut_ty_hack<#(#field_rlt_args,)* #(#field_args),*>)
 				},
 				new_expr: if !is_rental_mut {
-					quote!(unsafe { <#field_ty_hack_erased>::borrow_erased(&#deref #field_ident) })
+					quote!(unsafe { <#field_ty_hack_erased>::all_erased(&#deref #field_ident) })
 				} else {
-					quote!(unsafe { <#field_ty_hack_erased>::borrow_mut_erased(&mut #deref #field_ident) })
+					quote!(unsafe { <#field_ty_hack_erased>::all_mut_erased(&mut #deref #field_ident) })
 				},
 			}
 		} else {
