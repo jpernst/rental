@@ -40,7 +40,7 @@ rental! {
 
 		#[rental]
 		pub struct Rent {
-			#[subrental(arity = 2)]
+			#[subrental = 2]
 			sub: Box<Sub>,
 			qux: Qux<'sub_0, 'sub_1>,
 		}
@@ -54,7 +54,7 @@ rental! {
 		#[rental]
 		pub struct TailRent {
 			foo: Box<Foo>,
-			#[subrental(arity = 2)]
+			#[subrental = 2]
 			sub: Box<BorrowSub<'foo>>,
 			iref: &'sub_1 i32,
 		}

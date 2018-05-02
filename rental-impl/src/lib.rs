@@ -763,6 +763,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			}
 		).to_tokens(tokens);
 	}
+
+	if let Some(ref map_param) = attribs.map_param {
+	}
 }
 
 
@@ -776,7 +779,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 	let mut is_deref_suffix = false;
 	let mut is_deref_mut_suffix = false;
 	let mut is_covariant = false;
-	let mut is_map = false;
+	let mut map_param = None;
 
 	if let Some(rental_pos) = rattribs.iter().filter(|attr| !attr.is_sugared_doc).position(|attr| match attr.interpret_meta().expect(&format!("Struct `{}` Attribute `{}` is not properly formatted.", struct_info.ident, attr.path.clone().into_tokens())) {
 		syn::Meta::Word(ref attr_ident) => {
@@ -822,8 +825,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 									false
 								},
 								"map" => {
-									is_map = true;
-									false
+									panic!("Struct `{}` `map` flag must take a string argument.", struct_info.ident);
 								},
 								_ => true,
 							}
@@ -836,7 +838,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 			}).count();
 
 			if leftover > 0 {
-				panic!("Struct `{}` rental attribute takes optional arguments: `debug`, `clone`, `deref_suffix`, and `deref_mut_suffix`.", struct_info.ident);
+				panic!("Struct `{}` rental attribute takes optional arguments: `debug`, `clone`, `deref_suffix`, `deref_mut_suffix`, `covariant`, and `map(\"ty\")`.", struct_info.ident);
 			}
 
 			true
@@ -864,7 +866,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 		is_deref_suffix: is_deref_suffix,
 		is_deref_mut_suffix: is_deref_mut_suffix,
 		is_covariant: is_covariant,
-		is_map: is_map,
+		map_param: map_param,
 	}
 }
 
@@ -899,43 +901,35 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 
 		if let Some(sr_pos) = rfattribs.iter().position(|attr| match attr.interpret_meta() {
 			Some(syn::Meta::List(ref list)) if list.ident == "subrental" => {
-				if list.nested.len() != 1 {
-					panic!(
-						"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
-						struct_info.ident,
-						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
-					);
-				}
-
-				match list.nested[0] {
-					syn::NestedMeta::Meta(syn::Meta::NameValue(syn::MetaNameValue{ref ident, lit: syn::Lit::Int(ref arity), ..})) if ident == "arity" => {
+				panic!(
+					"`subrental` attribute on struct `{}` field `{}` expects ` = int`.",
+					struct_info.ident,
+					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+				);
+			},
+			Some(syn::Meta::Word(ref word)) if word == "subrental" => {
+				panic!(
+					"`subrental` attribute on struct `{}` field `{}` expects ` = int`.",
+					struct_info.ident,
+					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
+				);
+			},
+			Some(syn::Meta::NameValue(ref name_value)) if name_value.ident == "subrental" => {
+				match name_value.lit {
+					syn::Lit::Int(ref arity) => {
 						subrental = Some(Subrental{
 							arity: arity.value() as usize, 
 							rental_trait_ident: syn::Ident::new(&format!("Rental{}", arity.value()), def_site),
 						})
 					},
 					_ => panic!(
-						"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
+						"`subrental` attribute on struct `{}` field `{}` expects ` = int`.",
 						struct_info.ident,
 						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 					),
 				}
 
 				true
-			},
-			Some(syn::Meta::Word(ref word)) if word == "subrental" => {
-				panic!(
-					"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
-					struct_info.ident,
-					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
-				);
-			},
-			Some(syn::Meta::NameValue(ref name_value)) if name_value.ident == "subrental" => {
-				panic!(
-					"`subrental` attribute on struct `{}` field `{}` expects `arity = int`.",
-					struct_info.ident,
-					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
-				);
 			},
 			_ => false,
 		}) {
@@ -1281,7 +1275,7 @@ struct RentalStructAttribs {
 	pub is_deref_suffix: bool,
 	pub is_deref_mut_suffix: bool,
 	pub is_covariant: bool,
-	pub is_map: bool,
+	pub map_param: Option<syn::GenericParam>,
 }
 
 

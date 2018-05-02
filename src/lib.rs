@@ -185,7 +185,7 @@ pub mod __rental_prelude {
 ///         
 ///         #[rental]
 ///         pub struct MyRental {
-///             #[subrental(arity = 2)]
+///             #[subrental = 2]
 ///             prefix: Box<OtherRental>,
 ///             qux: Qux<'prefix_0, 'prefix_1>,
 ///         }
@@ -306,7 +306,7 @@ rental! {
 		/// ```
 		#[rental(deref_suffix)]
 		pub struct RentRefMap<T: 'static, U: 'static, V: 'static> {
-			#[subrental(arity = 2)]
+			#[subrental = 2]
 			head: Box<RentRef<T, U>>,
 			suffix: &'head_1 V,
 		}
@@ -325,7 +325,7 @@ rental! {
 		/// ```
 		#[rental_mut(deref_mut_suffix)]
 		pub struct RentMutMap<T: 'static, U: 'static, V: 'static> {
-			#[subrental(arity = 2)]
+			#[subrental = 2]
 			head: Box<RentMut<T, U>>,
 			suffix: &'head_1 mut V,
 		}
