@@ -7,7 +7,7 @@
 //! 
 //! The API of this crate consists of the [`rental`](macro.rental.html) macro, which generates safe self-referential structs, and a few example instantiations to demonstrate the API provided by such structs (see [`RentRef`](examples/struct.RentRef.html), [`RentMut`](examples/struct.RentMut.html), [`RentRefMap`](examples/struct.RentRefMap.html), and [`RentMutMap`](examples/struct.RentMutMap.html)).
 //! 
-//! # Use Cases
+//! # Example
 //! One instance where this crate is useful is when working with `libloading`. That crate provides a `Library` struct that defines methods to borrow `Symbol`s from it. These symbols are bounded by the lifetime of the library, and are thus considered a borrow. Under normal circumstances, one would be unable to store both the library and the symbols within a single struct, but the macro defined in this crate allows you to define a struct that is capable of storing both simultaneously, like so:
 //! 
 //! ```rust,ignore
@@ -15,9 +15,9 @@
 //!     pub mod rent_libloading {
 //!         use libloading;
 //! 
-//!         #[rental(deref_suffix)] // This struct will deref to the target of Symbol.
+//!         #[rental(deref_suffix)] // This struct will deref to the Deref::Target of Symbol.
 //!         pub struct RentSymbol<S: 'static> {
-//!             lib: Box<libloading::Library>, // Library is boxed for stable deref.
+//!             lib: Box<libloading::Library>, // Library is boxed for StableDeref.
 //!             sym: libloading::Symbol<'lib, S>, // The 'lib lifetime borrows lib.
 //!         }
 //!     }
@@ -27,7 +27,7 @@
 //!     let lib = libloading::Library::new("my_lib.so").unwrap(); // Open our dylib.
 //!     if let Ok(rs) = rent_libloading::RentSymbol::try_new(
 //!         Box::new(lib),
-//!         |lib| unsafe { lib.get::<extern "C" fn()>(b"my_symbol") }) // Loading Symbols is unsafe.
+//!         |lib| unsafe { lib.get::<extern "C" fn()>(b"my_symbol") }) // Loading symbols is unsafe.
 //!     {
 //!         (*rs)(); // Call our function
 //!     };
@@ -37,12 +37,12 @@
 //! In this way we can store both the `Library` and the `Symbol` that borrows it in a single struct. We can even tell our struct to deref to the function pointer itself so we can easily call it. This is legal because the function pointer does not contain any of the special lifetimes introduced by the rental struct in its type signature, which means reborrowing will not expose them to the outside world. As an aside, the `unsafe` block for loading the symbol is necessary because the act of loading a symbol from a dylib is unsafe, and is unrelated to rental.
 //! 
 //! # Limitations
-//! There are a few limitations with the current implementation. These limitations aren't fundamental, but rather the result of bugs or pending features in rust itself, and will be lifted once the underlying language allows it.
+//! There are a few limitations with the current implementation due to bugs or pending features in rust itself. These will be lifted once the underlying language allows it.
 //! 
 //! * Currently, the rental struct itself can only take lifetime parameters under certain conditions. These conditions are difficult to fully describe, but in general, a lifetime param of the rental struct itself must appear "outside" of any special rental lifetimes in the type signatures of the struct fields. To put it another way, replacing the rental lifetimes with `'static` must still produce legal types, otherwise it will not compile. In most situations this is fine, since most of the use cases for this library involve erasing all of the lifetimes anyway, but there's no reason why the head element of a rental struct shouldn't be able to take arbitrary lifetime params. This is currently impossible to fully support due to lack of an `'unsafe` lifetime or equivalent feature.
-//! * Prefix fields must be of the form `Foo<T>` where `Foo` is some `StableDeref` container, or rental will not be able to correctly guess the `Deref::Target` of the type. If you are using a custom type that does not fit this pattern, you can use the `target_ty_hack` attribute on the field to manually specify the target type. This limitation can be lifted once rust gets ATC or possibly after current bugs surrounding HRTB associated item unification are fixed. The requirement for `StableDeref` at all can possibly be lifted if rust gains a notion of immovable types.
-//! * Rental structs can only have a maximum of 32 rental lifetimes, including transitive rental lifetimes from subrentals. This limitation is the result of needing to implement a new trait for each rental arity. More traits can easily be defined though. Lifting this limitation entirely would require some kind of variadic lifetime generics.
-//! * The references received in the constructor closures don't currently have their lifetime relationship expressed in bounds. This is currently not possible until the trait system refactor lands. This is not a soundness hole, but it does prevent some otherwise valid uses from compiling.
+//! * Prefix fields must be of the form `Foo<T>` where `Foo` is some `StableDeref` container, or rental will not be able to correctly guess the `Deref::Target` of the type. If you are using a custom type that does not fit this pattern, you can use the `target_ty` attribute on the field to manually specify the target type.
+//! * Rental structs can only have a maximum of 32 rental lifetimes, including transitive rental lifetimes from subrentals. This limitation is the result of needing to implement a new trait for each rental arity. This limit can be easily increased if necessary.
+//! * The references received in the constructor closures don't currently have their lifetime relationship to eachother expressed in bounds, since HRTB lifetimes do not currently support bounds. This is not a soundness hole, but it does prevent some otherwise valid uses from compiling.
 
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -259,75 +259,81 @@ macro_rules! rental {
 #[cfg(feature = "std")]
 rental! {
 	/// Example instantiations that demonstrate the API provided by the types this crate generates.
-	pub mod examples {
-		/// A simple example that can store an owner and a shared reference in the same struct.
+	pub mod common {
+		use std::ops::DerefMut;
+		use stable_deref_trait::StableDeref;
+		use std::cell;
+
+		/// Stores an owner and a shared reference in the same struct.
 		///
 		/// ```rust
 		/// # extern crate rental;
-		/// # use rental::examples::RentRef;
+		/// # use rental::common::RentRef;
 		/// # fn main() {
 		/// let r = RentRef::new(Box::new(5), |i| &*i);
 		/// assert_eq!(*r, RentRef::rent(&r, |iref| **iref));
 		/// # }
 		/// ```
-		#[rental(deref_suffix)]
-		pub struct RentRef<T: 'static, U: 'static> {
-			head: Box<T>,
-			suffix: &'head U,
+		#[rental(debug, clone, deref_suffix, covariant, map_suffix = "T")]
+		pub struct RentRef<H: 'static + StableDeref, T: 'static> {
+			head: H,
+			suffix: &'head T,
 		}
 
-		/// A simple example that can store an owner and a mutable reference in the same struct.
+		/// Stores an owner and a mutable reference in the same struct.
 		///
 		/// ```rust
 		/// # extern crate rental;
-		/// # use rental::examples::RentMut;
+		/// # use rental::common::RentMut;
 		/// # fn main() {
 		/// let mut r = RentMut::new(Box::new(5), |i| &mut *i);
 		/// *r = 12;
 		/// assert_eq!(12, RentMut::rent(&mut r, |iref| **iref));
 		/// # }
 		/// ```
-		#[rental_mut(deref_mut_suffix)]
-		pub struct RentMut<T: 'static, U: 'static> {
-			head: Box<T>,
-			suffix: &'head mut U,
+		#[rental_mut(debug, deref_mut_suffix, covariant, map_suffix = "T")]
+		pub struct RentMut<H: 'static + StableDeref + DerefMut, T: 'static> {
+			head: H,
+			suffix: &'head mut T,
 		}
 
-		/// An example that borrows off of another rental struct.
+		/// Stores a `RefCell` and a `Ref` in the same struct.
 		///
 		/// ```rust
 		/// # extern crate rental;
-		/// # use rental::examples::{RentRef, RentRefMap};
+		/// # use rental::common::RentRefCell;
 		/// # fn main() {
-		/// let r = RentRef::new(Box::new(5), |i| &*i);
-		/// let rm = RentRefMap::new(Box::new(r), |r| &**r.suffix);
-		/// assert_eq!(*rm, RentRefMap::rent(&rm, |iref| **iref));
+		/// use std::cell;
+		///
+		/// let r = RentRefCell::new(Box::new(cell::RefCell::new(5)), |c| c.borrow());
+		/// assert_eq!(*r, RentRefCell::rent(&r, |c| **c));
 		/// # }
 		/// ```
-		#[rental(deref_suffix)]
-		pub struct RentRefMap<T: 'static, U: 'static, V: 'static> {
-			#[subrental = 2]
-			head: Box<RentRef<T, U>>,
-			suffix: &'head_1 V,
+		#[rental(debug, clone, deref_suffix, covariant, map_suffix = "T")]
+		pub struct RentRefCell<H: 'static + StableDeref, T: 'static> {
+			head: H,
+			suffix: cell::Ref<'head, T>,
 		}
 
-		/// An example that borrows mutably off of another rental struct.
+		/// Stores a `RefCell` and a `RefMut` in the same struct.
 		///
 		/// ```rust
 		/// # extern crate rental;
-		/// # use rental::examples::{RentMut, RentMutMap};
+		/// # use rental::common::RentRefCellMut;
 		/// # fn main() {
-		/// let mut r = RentMut::new(Box::new(5), |i| &mut *i);
-		/// let mut rm = RentMutMap::new(Box::new(r), |r| &mut **r.suffix);
-		/// *rm = 12;
-		/// assert_eq!(12, RentMutMap::rent(&mut rm, |iref| **iref));
+		/// use std::cell;
+		///
+		/// let mut r = RentRefCellMut::new(Box::new(cell::RefCell::new(5)), |c| c.borrow_mut());
+		/// *r = 12;
+		/// assert_eq!(12, RentRefCellMut::rent(&r, |c| **c));
 		/// # }
 		/// ```
-		#[rental_mut(deref_mut_suffix)]
-		pub struct RentMutMap<T: 'static, U: 'static, V: 'static> {
-			#[subrental = 2]
-			head: Box<RentMut<T, U>>,
-			suffix: &'head_1 mut V,
+		#[rental_mut(debug, deref_mut_suffix, covariant, map_suffix = "T")]
+		pub struct RentRefCellMut<H: 'static + StableDeref + DerefMut, T: 'static> {
+			head: H,
+			suffix: cell::RefMut<'head, T>,
 		}
 	}
 }
+
+
