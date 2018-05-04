@@ -76,9 +76,9 @@ pub trait IntoSuffix {
 /// An error wrapper returned by the `try_new` method of a rental struct.
 ///
 /// This will contain the first error returned by the closure chain, as well as the original head value you passed in so you can do something else with it.
-pub struct TryNewError<E, H> (pub E, pub H);
+pub struct RentalError<E, H> (pub E, pub H);
 
-pub type TryNewResult<T, E, H> = Result<T, TryNewError<E, H>>;
+pub type RentalResult<T, E, H> = Result<T, RentalError<E, H>>;
 
 
 macro_rules! define_rental_traits {
@@ -96,7 +96,7 @@ macro_rules! define_rental_traits {
 pub mod __rental_prelude {
 	pub use core::marker::PhantomData;
 	pub use core::clone::Clone;
-	pub use core::ops::{Deref, DerefMut, Drop};
+	pub use core::ops::{FnOnce, Deref, DerefMut, Drop};
 	pub use core::convert::{AsRef, AsMut, Into};
 	pub use core::borrow::{Borrow, BorrowMut};
 	pub use core::mem::transmute;
@@ -105,7 +105,7 @@ pub mod __rental_prelude {
 	pub use core::fmt;
 	pub use stable_deref_trait::{StableDeref, CloneStableDeref};
 
-	pub use super::{IntoSuffix, TryNewError, TryNewResult};
+	pub use super::{IntoSuffix, RentalError, RentalResult};
 
 
 	define_rental_traits!(32);

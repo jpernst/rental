@@ -7,8 +7,10 @@ extern crate syn;
 #[macro_use]
 extern crate quote;
 
-use std::iter;
+use std::iter::{self, FromIterator};
 use syn::spanned::Spanned;
+use syn::visit::Visit;
+use syn::fold::Fold;
 use quote::ToTokens;
 use proc_macro2::Span;
 
@@ -203,6 +205,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 	let suffix_ty = &fields[fields.len() - 1].erased.ty;
 	let suffix_rlt_args = &fields[fields.len() - 1].self_rlt_args.iter().chain(fields[fields.len() - 1].used_rlt_args.iter()).collect::<Vec<_>>();
 	let suffix_ident_str = syn::LitStr::new(&suffix_ident.to_string(), suffix_ident.span());
+	let suffix_orig_ty = &fields[fields.len() - 1].orig_ty;
 
 	let rstruct = syn::ItemStruct{
 		ident: struct_info.ident.clone(),
@@ -355,7 +358,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			pub fn try_new<#(#tail_closure_tys,)* __E>(
 				mut #head_ident: #head_ty,
 				#(#tail_idents: #tail_closure_tys),*
-			) -> __rental_prelude::TryNewResult<Self, __E, #head_ty> where
+			) -> __rental_prelude::RentalResult<Self, __E, #head_ty> where
 				#(#tail_closure_tys: #tail_try_closure_bounds,)*
 			{
 				#(#static_assert_prefix_stable_derefs)*
@@ -364,7 +367,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					let temp = #tail_try_closure_exprs.map(|t| unsafe { __rental_prelude::transmute::<_, #tail_tys>(t) });
 					match temp {
 						Ok(t) => t,
-						Err(e) => return Err(__rental_prelude::TryNewError(e.into(), #head_ident_rep)),
+						Err(e) => return Err(__rental_prelude::RentalError(e.into(), #head_ident_rep)),
 					}
 				};)*
 
@@ -415,7 +418,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
 			pub fn rent<__F, __R>(#self_ref_param, f: __F) -> __R where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __R,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
 				f(#borrow_suffix_expr)
@@ -425,7 +428,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
 			pub fn rent_mut<__F, __R>(#self_mut_param, f: __F) -> __R where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __R,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_suffix_expr)
@@ -435,7 +438,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn ref_rent<__F, __R>(#self_ref_param, f: __F) -> &__R where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> &#last_rlt_arg __R,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_suffix_ty) -> &#last_rlt_arg __R,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_suffix_expr)
@@ -445,7 +448,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn maybe_ref_rent<__F, __R>(#self_ref_param, f: __F) -> __rental_prelude::Option<&__R> where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg __R>,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg __R>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_suffix_expr)
@@ -455,7 +458,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// This is a subtle variation of `rent` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn try_ref_rent<__F, __R, __E>(#self_ref_param, f: __F) -> __rental_prelude::Result<&__R, __E> where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_suffix_expr)
@@ -465,7 +468,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn ref_rent_mut<__F, __R>(#self_mut_param, f: __F) -> &mut __R where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> &#last_rlt_arg  mut __R,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_suffix_ty) -> &#last_rlt_arg  mut __R,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_suffix_expr)
@@ -475,7 +478,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn maybe_ref_rent_mut<__F, __R>(#self_mut_param, f: __F) -> __rental_prelude::Option<&mut __R> where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg  mut __R>,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Option<&#last_rlt_arg  mut __R>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_suffix_expr)
@@ -485,7 +488,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 			///
 			/// This is a subtle variation of `rent_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 			pub fn try_ref_rent_mut<__F, __R, __E>(#self_mut_param, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
-				__F: for<#(#suffix_rlt_args,)*> FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg  mut __R, __E>,
+				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_suffix_ty) -> __rental_prelude::Result<&#last_rlt_arg  mut __R, __E>,
 				__R: ?Sized //#(#struct_lt_args +)*,
 			{
 				f(#borrow_mut_suffix_expr)
@@ -512,7 +515,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
 				pub fn rent_all<__F, __R>(#self_ref_param, f: __F) -> __R where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_erased(#self_arg) })
@@ -522,7 +525,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn ref_rent_all<__F, __R>(#self_ref_param, f: __F) -> &__R where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg __R,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg __R,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_erased(#self_arg) })
@@ -532,7 +535,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn maybe_ref_rent_all<__F, __R>(#self_ref_param, f: __F) -> __rental_prelude::Option<&__R> where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg __R>,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg __R>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_erased(#self_arg) })
@@ -542,7 +545,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// This is a subtle variation of `rent_all` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn try_ref_rent_all<__F, __R, __E>(#self_ref_param, f: __F) -> __rental_prelude::Result<&__R, __E> where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg __R, __E>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_erased(#self_arg) })
@@ -552,7 +555,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
 				pub fn rent_all_mut<__F, __R>(#self_mut_param, f: __F) -> __R where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
@@ -562,7 +565,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn ref_rent_all_mut<__F, __R>(#self_mut_param, f: __F) -> &mut __R where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg mut __R,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> &#last_rlt_arg mut __R,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
@@ -572,7 +575,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn maybe_ref_rent_all_mut<__F, __R>(#self_mut_param, f: __F) -> __rental_prelude::Option<&mut __R> where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg mut __R>,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Option<&#last_rlt_arg mut __R>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
@@ -582,7 +585,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 				///
 				/// This is a subtle variation of `rent_all_mut` where it is legal to return a reference bounded by a rental lifetime, because that lifetime is reborrowed away before it is returned to you.
 				pub fn try_ref_rent_all_mut<__F, __R, __E>(#self_mut_param, f: __F) -> __rental_prelude::Result<&mut __R, __E> where
-					__F: for<#(#struct_rlt_args,)*> FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg mut __R, __E>,
+					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __rental_prelude::Result<&#last_rlt_arg mut __R, __E>,
 					__R: ?Sized //#(#struct_lt_args +)*,
 				{
 					f(unsafe { #item_ident::all_mut_erased(#self_arg) })
@@ -764,7 +767,98 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		).to_tokens(tokens);
 	}
 
-	if let Some(ref map_param) = attribs.map_param {
+	if let Some(ref map_suffix_param) = attribs.map_suffix_param {
+		let mut replacer = MapTyParamReplacer{
+			ty_param: map_suffix_param,
+		};
+
+		let mapped_suffix_param = replacer.fold_type_param(map_suffix_param.clone());
+		let mapped_ty = replacer.fold_path(parse_quote!(#item_ident #struct_impl_args));
+		let mapped_suffix_ty = replacer.fold_type(suffix_orig_ty.clone());
+
+		let mut map_where_clause = syn::WhereClause{
+			where_token: Default::default(),
+			predicates: syn::punctuated::Punctuated::from_iter(
+				struct_generics.type_params().filter(|p| p.ident != map_suffix_param.ident).filter_map(|p| {
+					let mut mapped_param = p.clone();
+					mapped_param.bounds = syn::punctuated::Punctuated::new();
+
+					for mapped_bound in p.bounds.iter().filter(|b| {
+						let mut finder = MapTyParamFinder {
+							ty_param: map_suffix_param,
+							found: false,
+						};
+						finder.visit_type_param_bound(b);
+						finder.found
+					}).map(|b| {
+						let mut replacer = MapTyParamReplacer{
+							ty_param: map_suffix_param,
+						};
+
+						replacer.fold_type_param_bound(b.clone())
+					}) {
+						mapped_param.bounds.push(mapped_bound)
+					}
+
+					if mapped_param.bounds.len() > 0 {
+						Some(syn::punctuated::Pair::Punctuated(parse_quote!(#mapped_param), Default::default()))
+					} else {
+						None
+					}
+				}).chain(
+					struct_where_clause.iter().flat_map(|w| w.predicates.iter()).filter(|p| {
+						let mut finder = MapTyParamFinder {
+							ty_param: map_suffix_param,
+							found: false,
+						};
+						finder.visit_where_predicate(p);
+						finder.found
+					}).map(|p| {
+						let mut replacer = MapTyParamReplacer{
+							ty_param: map_suffix_param,
+						};
+
+						syn::punctuated::Pair::Punctuated(replacer.fold_where_predicate(p.clone()), Default::default())
+					})
+				)
+			)
+		};
+
+		let mut try_map_where_clause = map_where_clause.clone();
+		map_where_clause.predicates.push(parse_quote!(
+			__F: for<#(#suffix_rlt_args),*> __rental_prelude::FnOnce(#suffix_orig_ty) -> #mapped_suffix_ty
+		));
+		try_map_where_clause.predicates.push(parse_quote!(
+			__F: for<#(#suffix_rlt_args),*> __rental_prelude::FnOnce(#suffix_orig_ty) -> __rental_prelude::Result<#mapped_suffix_ty, __E>
+		));
+
+		quote_spanned!(struct_span =>
+			#[allow(dead_code)]
+			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
+				/// Maps the suffix field of the rental struct to a different type.
+				///
+				/// Consumes the rental struct and applies the closure to the suffix field. A new rental struct is then constructed with the original prefix and new suffix.
+				pub fn map<#mapped_suffix_param, __F>(#self_move_param, __f: __F) -> #mapped_ty #map_where_clause {
+					let #item_ident{ #(#field_idents,)* } = #self_arg;
+
+					let #suffix_ident = __f(#suffix_ident);
+
+					#item_ident{ #(#field_idents: #local_idents,)* }
+				}
+
+				/// Try to map the suffix field of the rental struct to a different type.
+				///
+				/// As `map`, but the closure may fail. Upon failure, the tail is dropped, and the error is returned to you along with the head.
+				pub fn try_map<#mapped_suffix_param, __F, __E>(#self_move_param, __f: __F) -> __rental_prelude::RentalResult<#mapped_ty, __E, #head_ty> #try_map_where_clause {
+					let #item_ident{ #(#field_idents,)* } = #self_arg;
+
+					match __f(#suffix_ident) {
+						Ok(#suffix_ident) => Ok(#item_ident { #(#field_idents: #local_idents,)* }),
+						Err(__e) => Err(__rental_prelude::RentalError(__e, #head_ident)),
+					}
+				}
+			}
+		).to_tokens(tokens);
 	}
 }
 
@@ -779,7 +873,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 	let mut is_deref_suffix = false;
 	let mut is_deref_mut_suffix = false;
 	let mut is_covariant = false;
-	let mut map_param = None;
+	let mut map_suffix_param = None;
 
 	if let Some(rental_pos) = rattribs.iter().filter(|attr| !attr.is_sugared_doc).position(|attr| match attr.interpret_meta().expect(&format!("Struct `{}` Attribute `{}` is not properly formatted.", struct_info.ident, attr.path.clone().into_tokens())) {
 		syn::Meta::Word(ref attr_ident) => {
@@ -824,8 +918,51 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 									is_covariant = true;
 									false
 								},
-								"map" => {
-									panic!("Struct `{}` `map` flag must take a string argument.", struct_info.ident);
+								"map_suffix" => {
+									panic!("Struct `{}` `map_suffix` flag expects ` = \"T\"`.", struct_info.ident);
+								},
+								_ => true,
+							}
+						},
+						syn::Meta::NameValue(ref name_value) => {
+							match name_value.ident.as_ref() {
+								"map_suffix" => {
+									if let syn::Lit::Str(ref ty_param_str) = name_value.lit {
+										let ty_param_str = ty_param_str.value();
+										let ty_param = struct_info.generics.type_params().find(|ty_param| {
+											if ty_param.ident.as_ref() == ty_param_str {
+												return true;
+											}
+
+											false
+										}).unwrap_or_else(|| {
+											panic!("Struct `{}` `map_suffix` param `{}` does not name a type parameter.", struct_info.ident, ty_param_str);
+										});
+
+										let mut finder = MapTyParamFinder{
+											ty_param: &ty_param,
+											found: false,
+										};
+
+										if struct_info.fields.iter().take(struct_info.fields.iter().count() - 1).any(|f| {
+											finder.found = false;
+											finder.visit_field(f);
+											finder.found
+										}) {
+											panic!("Struct `{}` `map_suffix` type param `{}` appears in a prefix field.", struct_info.ident, ty_param_str);
+										}
+
+										finder.found = false;
+										finder.visit_field(struct_info.fields.iter().last().unwrap());
+										if !finder.found {
+											panic!("Struct `{}` `map_suffix` type param `{}` does not appear in the suffix field.", struct_info.ident, ty_param_str);
+										}
+
+										map_suffix_param = Some(ty_param.clone());
+										false
+									} else {
+										panic!("Struct `{}` `map_suffix` flag expects ` = \"T\"`.", struct_info.ident);
+									}
 								},
 								_ => true,
 							}
@@ -838,7 +975,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 			}).count();
 
 			if leftover > 0 {
-				panic!("Struct `{}` rental attribute takes optional arguments: `debug`, `clone`, `deref_suffix`, `deref_mut_suffix`, `covariant`, and `map(\"ty\")`.", struct_info.ident);
+				panic!("Struct `{}` rental attribute takes optional arguments: `debug`, `clone`, `deref_suffix`, `deref_mut_suffix`, `covariant`, and `map_suffix = \"T\"`.", struct_info.ident);
 			}
 
 			true
@@ -866,7 +1003,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 		is_deref_suffix: is_deref_suffix,
 		is_deref_mut_suffix: is_deref_mut_suffix,
 		is_covariant: is_covariant,
-		map_param: map_param,
+		map_suffix_param: map_suffix_param,
 	}
 }
 
@@ -902,14 +1039,14 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 		if let Some(sr_pos) = rfattribs.iter().position(|attr| match attr.interpret_meta() {
 			Some(syn::Meta::List(ref list)) if list.ident == "subrental" => {
 				panic!(
-					"`subrental` attribute on struct `{}` field `{}` expects ` = int`.",
+					"`subrental` attribute on struct `{}` field `{}` expects ` = arity`.",
 					struct_info.ident,
 					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 				);
 			},
 			Some(syn::Meta::Word(ref word)) if word == "subrental" => {
 				panic!(
-					"`subrental` attribute on struct `{}` field `{}` expects ` = int`.",
+					"`subrental` attribute on struct `{}` field `{}` expects ` = arity`.",
 					struct_info.ident,
 					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 				);
@@ -923,7 +1060,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 						})
 					},
 					_ => panic!(
-						"`subrental` attribute on struct `{}` field `{}` expects ` = int`.",
+						"`subrental` attribute on struct `{}` field `{}` expects ` = arity`.",
 						struct_info.ident,
 						field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 					),
@@ -991,7 +1128,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 				used_rlt_args: &mut used_rlt_args,
 			};
 
-			syn::fold::fold_type(&mut eraser, field.ty.clone())
+			eraser.fold_type(field.ty.clone())
 		};
 
 		let target_ty_hack = target_ty_hack.as_ref().map(|ty| (*ty).clone()).or_else(|| if field_idx < fields.len() - 1 {
@@ -1034,7 +1171,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 				used_rlt_args: &mut Vec::new(),
 			};
 
-			syn::fold::fold_type(&mut eraser, tth.clone())
+			eraser.fold_type(tth.clone())
 		});
 
 		rfields.push(RentalField{
@@ -1246,9 +1383,9 @@ fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], is
 			let prev_rlt_args = &prev_rlt_args;
 
 			ClosureQuotes {
-				bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#(#prev_new_tys_reverse),*) -> #field_ty),
+				bound: quote!(for<#(#prev_rlt_args),*> __rental_prelude::FnOnce(#(#prev_new_tys_reverse),*) -> #field_ty),
 				expr: quote!(#local_name(#(#prev_new_exprs_reverse),*)),
-				try_bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#(#prev_new_tys_reverse),*) -> __rental_prelude::Result<#field_ty, __E>),
+				try_bound: quote!(for<#(#prev_rlt_args),*> __rental_prelude::FnOnce(#(#prev_new_tys_reverse),*) -> __rental_prelude::Result<#field_ty, __E>),
 				try_expr: quote!(#local_name(#(#prev_new_exprs_reverse),*)),
 			}
 		} else {
@@ -1257,9 +1394,9 @@ fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], is
 			let prev_rlt_args = &fields[idx - 1].self_rlt_args.iter().chain(&fields[idx - 1].used_rlt_args).collect::<Vec<_>>();
 
 			ClosureQuotes {
-				bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#prev_new_ty) -> #field_ty),
+				bound: quote!(for<#(#prev_rlt_args),*> __rental_prelude::FnOnce(#prev_new_ty) -> #field_ty),
 				expr: quote!(#local_name(#prev_new_expr)),
-				try_bound: quote!(for<#(#prev_rlt_args),*> FnOnce(#prev_new_ty) -> __rental_prelude::Result<#field_ty, __E>),
+				try_bound: quote!(for<#(#prev_rlt_args),*> __rental_prelude::FnOnce(#prev_new_ty) -> __rental_prelude::Result<#field_ty, __E>),
 				try_expr: quote!(#local_name(#prev_new_expr)),
 			}
 		}
@@ -1275,7 +1412,7 @@ struct RentalStructAttribs {
 	pub is_deref_suffix: bool,
 	pub is_deref_mut_suffix: bool,
 	pub is_covariant: bool,
-	pub map_param: Option<syn::GenericParam>,
+	pub map_suffix_param: Option<syn::TypeParam>,
 }
 
 
@@ -1336,6 +1473,72 @@ impl<'a> syn::fold::Fold for RentalLifetimeEraser<'a> {
 		} else {
 			lifetime
 		}
+	}
+}
+
+
+struct MapTyParamFinder<'p> {
+	pub ty_param: &'p syn::TypeParam,
+	pub found: bool,
+}
+
+
+impl<'p, 'ast> syn::visit::Visit<'ast> for MapTyParamFinder<'p> {
+	fn visit_path(&mut self, path: &'ast syn::Path) {
+		if path.leading_colon.is_none() && path.segments.len() == 1 && path.segments[0].ident == self.ty_param.ident && path.segments[0].arguments == syn::PathArguments::None {
+			self.found = true;
+		} else {
+			for seg in &path.segments {
+				self.visit_path_segment(seg)
+			};
+		}
+	}
+}
+
+
+struct MapTyParamReplacer<'p> {
+	pub ty_param: &'p syn::TypeParam,
+}
+
+
+impl<'p> syn::fold::Fold for MapTyParamReplacer<'p> {
+	fn fold_path(&mut self, path: syn::Path) -> syn::Path {
+		if path.leading_colon.is_none() && path.segments.len() == 1 && path.segments[0].ident == self.ty_param.ident && path.segments[0].arguments == syn::PathArguments::None {
+			let def_site: Span = Span::call_site(); // FIXME
+
+			syn::Path{
+				leading_colon: None,
+				segments: syn::punctuated::Punctuated::from_iter(Some(
+					syn::punctuated::Pair::End(syn::PathSegment{ident: syn::Ident::new("__U", def_site), arguments: syn::PathArguments::None})
+				)),
+			}
+		} else {
+			let syn::Path{
+				leading_colon,
+				segments,
+			} = path;
+
+			syn::Path{
+				leading_colon: leading_colon,
+				segments: syn::punctuated::Punctuated::from_iter(segments.into_pairs().map(|p| match p {
+					syn::punctuated::Pair::Punctuated(seg, punc) => syn::punctuated::Pair::Punctuated(self.fold_path_segment(seg), punc),
+					syn::punctuated::Pair::End(seg) => syn::punctuated::Pair::End(self.fold_path_segment(seg)),
+				}))
+			}
+		}
+	}
+
+
+	fn fold_type_param(&mut self, mut ty_param: syn::TypeParam) -> syn::TypeParam {
+		if ty_param.ident == self.ty_param.ident {
+			let def_site: Span = Span::call_site(); // FIXME
+			ty_param.ident = syn::Ident::new("__U", def_site);
+		}
+
+		let bounds = syn::punctuated::Punctuated::from_iter(ty_param.bounds.iter().map(|b| self.fold_type_param_bound(b.clone())));
+		ty_param.bounds = bounds;
+
+		ty_param
 	}
 }
 

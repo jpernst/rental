@@ -43,11 +43,11 @@ fn new() {
 	let _ = rentals::SimpleRef::new(Box::new(foo), |foo| FooRef{ iref: &foo.i, misc: 12 });
 
 	let foo = Foo { i: 5 };
-	let sr: rental::TryNewResult<rentals::SimpleRef, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| Ok(FooRef{ iref: foo.try_borrow()?, misc: 12 }));
+	let sr: rental::RentalResult<rentals::SimpleRef, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| Ok(FooRef{ iref: foo.try_borrow()?, misc: 12 }));
 	assert!(sr.is_ok());
 
 	let foo = Foo { i: 5 };
-	let sr: rental::TryNewResult<rentals::SimpleRef, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| Ok(FooRef{ iref: foo.fail_borrow()?, misc: 12 }));
+	let sr: rental::RentalResult<rentals::SimpleRef, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| Ok(FooRef{ iref: foo.fail_borrow()?, misc: 12 }));
 	assert!(sr.is_err());
 }
 
