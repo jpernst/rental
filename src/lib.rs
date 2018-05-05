@@ -5,7 +5,7 @@
 //!
 //! Creating such a struct manually would require unsafe code to erase lifetime parameters from the field types. Accessing the fields directly would be completely unsafe as a result. This library addresses that issue by allowing access to the internal fields only under carefully controlled circumstances, through closures that are bounded by generic lifetimes to prevent infiltration or exfiltration of any data with an incorrect lifetime. In short, while the struct internally uses unsafe code to store the fields, the interface exposed to the consumer of the struct is completely safe. The implementation of this interface is subtle and verbose, hence the macro to automate the process.
 //! 
-//! The API of this crate consists of the [`rental`](macro.rental.html) macro, which generates safe self-referential structs, and a few example instantiations to demonstrate the API provided by such structs (see [`RentRef`](examples/struct.RentRef.html), [`RentMut`](examples/struct.RentMut.html), [`RentRefMap`](examples/struct.RentRefMap.html), and [`RentMutMap`](examples/struct.RentMutMap.html)).
+//! The API of this crate consists of the [`rental`](macro.rental.html) macro that generates safe self-referential structs, a few example instantiations to demonstrate the API provided by such structs (see [`examples`](examples/index.html)), and a module of premade instantiations to cover common usecases (see [`common`](common/index.html)).
 //! 
 //! # Example
 //! One instance where this crate is useful is when working with `libloading`. That crate provides a `Library` struct that defines methods to borrow `Symbol`s from it. These symbols are bounded by the lifetime of the library, and are thus considered a borrow. Under normal circumstances, one would be unable to store both the library and the symbols within a single struct, but the macro defined in this crate allows you to define a struct that is capable of storing both simultaneously, like so:
@@ -118,13 +118,13 @@ pub mod __rental_prelude {
 }
 
 
-/// The core of this crate, this macro will generate self-referential structs.
+/// The bedrock of this crate, this macro will generate self-referential structs.
 /// 
 /// This macro is invoked in item position. The body parses as valid rust and contains no special syntax. Only certain constructs are allowed, and a few special attributes and lifetimes are recognized.
 /// 
-/// To start, the the top level item of the macro invocation must be a single module. This module will contain all items that the macro generates and export them to you. Within the module, only three types of items are accepted: `use` statements, type aliases, and struct definitions. The `use` statements and type aliases are passed directly through with no special consideration; the primary concern is the struct definitions.
+/// To start, the top level item of the macro invocation must be a single module. This module will contain all items that the macro generates and export them to you. Within the module, only three types of items are accepted: `use` statements, type aliases, and struct definitions. The `use` statements and type aliases are passed directly through with no special consideration; the primary concern is the struct definitions.
 /// 
-/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. The `mut` variant indicates that the struct mutably borrows itself, while the normal attribute assumes shared borrows. These attributes may optionally take the arguments `debug_borrow`, `deref_suffix`, and `deref_mut_suffix`, discussed below.
+/// First, all struct definitions must have a `#[rental]` or `#[rental_mut]` attribute to indicate that they are self-referential. The `mut` variant indicates that the struct mutably borrows itself, while the normal attribute assumes shared borrows. These attributes also accept certain flags to enable specific features, described below.
 /// 
 /// Next, the structs must have named fields (no tuple structs) and they must have at least 2 fields, since a struct with 1 field can't meaningfully reference itself anyway.
 /// 
@@ -132,7 +132,7 @@ pub mod __rental_prelude {
 /// 
 /// Because rental structs are self-referential, special care is taken to ensure that moving the struct will not invalidate any internal references. This is accomplished by requiring all fields but the last one, collectively known as the "prefix" of the struct, to implement [`StableDeref`](https://crates.io/crates/stable_deref_trait). This is not required for the final field of the struct, known as the "suffix", since nothing holds a reference to it.
 ///
-/// NOTE: Because of a workaround for a compiler bug, rental might not always correctly determine the `Deref::Target` type of your prefix fields. If you receive type errors when compiling, you can try using the `target_ty_hack` attribute on the field of the struct. Set this attribute equal to a string that names the correct target type (e.g. `#[target_ty_hack = "[u8]"]` for `Vec<u8>`.
+/// NOTE: Because of a workaround for a compiler bug, rental might not always correctly determine the `Deref::Target` type of your prefix fields. If you receive type errors when compiling, you can try using the `target_ty` attribute on the field of the struct. Set this attribute equal to a string that names the correct target type (e.g. `#[target_ty = "[u8]"]` for `Vec<u8>`.
 /// 
 /// Each field that you declare creates a special lifetime of the same name that can be used by later fields to borrow it. This is how the referential relationships are established in the struct definition.
 /// 
@@ -163,8 +163,27 @@ pub mod __rental_prelude {
 /// 
 /// In addition to the rental struct itself, two other structs are generated, with `_Borrow` and `_BorrowMut` appended to the original struct name (e.g. `MyRental_Borrow` and `MyRental_BorrowMut`). These structs contain the same fields as the original struct, but are borrows of the originals. These structs are passed into certain closures that you provide to the [`rent_all`](examples/struct.RentRef.html#method.rent_all) suite of methods to allow you access to the struct's fields. For mutable rentals, these structs will only contain a borrow of the suffix; the other fields will be erased with `PhantomData`.
 /// 
-/// If all the fields of your struct implement `Debug` then you can use the `debug_borrow` option on the rental attribute to gain a `Debug` impl on the struct itself. Also, if the suffix field of the struct implements `Deref` or `DerefMut`, you can add a `deref_suffix` or `deref_mut_suffix` argument to the `rental` attribute on the struct. This will generate a `Deref` implementation for the rental struct itself that will deref through the suffix and return the borrow to you, for convenience. Note, however, that this will only be legal if none of the special rental lifetimes appear in the type signature of the deref target. If they do, exposing them to the outside world could result in unsafety, so this is not allowed and such a scenario will not compile.
+/// # Attribute Flags
 /// 
+/// A `rental` or `rental_mut` attribute accepts various options that affect the code generated by the macro to add certain features if your type supports them. These flags are placed in parens after the attribute, similar to the `cfg` attribute, e.g. `#[rental(debug)]`.
+///
+/// ## debug
+/// If all the fields of your struct implement `Debug` then you can use the `debug` option on the rental attribute to gain a `Debug` impl on the struct itself. For mutable rental structs, only the suffix field needs to be `Debug`, as it is the only one that will be printed. The prefix fields are mutably borrowed so cannot be accessed while the suffix exists.
+///
+/// ## clone
+/// If the prefix fields of your struct impl `CloneStableDeref` (which means clones still deref to the same object), and the suffix field is `Clone`, then your rental struct can be `Clone` as well.
+///
+/// ## deref_suffix / deref_mut_suffix
+/// If the suffix field of the struct implements `Deref` or `DerefMut`, you can add a `deref_suffix` or `deref_mut_suffix` argument to the `rental` attribute on the struct. This will generate a `Deref` implementation for the rental struct itself that will deref through the suffix and return the borrow to you, for convenience. Note, however, that this will only be legal if none of the special rental lifetimes appear in the type signature of the deref target. If they do, exposing them to the outside world could result in unsafety, so this is not allowed and such a scenario will not compile.
+///
+/// ## covariant
+/// Since the true lifetime of a self-referential field is currently inexpressible in rust, the lifetimes the fields use internally are fake. This means that directly borrowing the fields of the struct would be quite unsafe. However, if we know that the type is covariant over its lifetime parameters, then we can reborrow away the fake rental lifetimes to something concrete and safe. This tag will provide methods that access the fields of the struct directly, while also ensuring that the covariance requirement is met, otherwise the struct will fail to compile. For an exmaple see [`SimpleRefCovariant`](examples/struct.SimpleRefCovariant.html).
+///
+/// ## map_suffix = "T"
+/// For rental structs that contain some kind of smart reference as their suffix field, such as a `Ref` or `MutexGuard`, it can be useful to be able to map the reference to another type. This option allows you to do so, given certain conditions. First, your rental struct must have a type parameter in the position that you want to map, such as `Ref<'head, T>` or `MutexGuard<'head, T>`. Second, this type param must ONLY be used in the suffix field. Specify the type parameter you wish to use with `map_suffix = "T"` where `T` is the name of the type param that satisfies these conditions. For an example of the methods this option provides, see [`SimpleRefMap`](examples/struct.SimpleRefMap.html).
+/// 
+/// # Subrentals
+///
 /// Finally, there is one other capability to discuss. If a rental struct has been defined elsewhere, either in our own crate or in a dependency, we'd like to be able to chain our own rental struct off of it. In this way, we can use another rental struct as a sort of pre-packaged prefix of our own. As a variation on the above example, it would look like this:
 ///
 /// ```rust
@@ -194,7 +213,7 @@ pub mod __rental_prelude {
 /// # fn main () { }
 /// ```
 /// 
-/// The first rental struct is fairly standard, so we'll focus on the second one. The head field is given a `subrental` attribute with an `arity` argument. The arity of a rental struct is the number of special lifetimes it creates. As can be seen above, the first struct has two fields, neither of which is itself a subrental, so it has an arity of 2. The arity of the second struct would be 3, since it includes the two fields of the first rental as well as one new one. In this way, arity is transitive. So if we used our new struct itself as a subrental of yet another struct, we'd need to declare the field with `arity = 3`. The special lifetimes created by a subrental are the field name followed by a `_` and a zero-based index.
+/// The first rental struct is fairly standard, so we'll focus on the second one. The head field is given a `subrental` attribute with an `arity` argument. The arity of a rental struct is the number of special lifetimes it creates. As can be seen above, the first struct has two fields, neither of which is itself a subrental, so it has an arity of 2. The arity of the second struct would be 3, since it includes the two fields of the first rental as well as one new one. In this way, arity is transitive. So if we used our new struct itself as a subrental of yet another struct, we'd need to declare the field with ` = 3`. The special lifetimes created by a subrental are the field name followed by a `_` and a zero-based index. Also note that the suffix field cannot itself be a subrental, only prefix fields.
 /// 
 /// This covers the essential capabilities of the macro itself. For details on the API of the structs themselves, see the [`examples`](examples/index.html) module.
 #[macro_export]
@@ -258,11 +277,77 @@ macro_rules! rental {
 
 #[cfg(feature = "std")]
 rental! {
-	/// Example instantiations that demonstrate the API provided by the types this crate generates.
+	/// Example types that demonstrate the API generated by the rental macro.
+	pub mod examples {
+		use std::sync;
+
+		/// The simplest shared rental. The head is a boxed integer, and the suffix is a ref to that integer. This struct demonstrates the basic API that all shared rental structs have. See [`SimpleMut`](struct.SimpleMut.html) for the mutable analog.
+		#[rental]
+		pub struct SimpleRef {
+			head: Box<i32>,
+			iref: &'head i32,
+		}
+
+		/// The simplest mutable rental. Mutable rentals have a slightly different API; compare this struct to [`SimpleRef`](struct.SimpleRef.html) for the clearest picture of how they differ.
+		#[rental_mut]
+		pub struct SimpleMut {
+			head: Box<i32>,
+			iref: &'head mut i32,
+		}
+
+		/// Identical to [`SimpleRef`](struct.SimpleRef.html), but with the `debug` flag enabled. This will provide a `Debug` impl for the struct as long as all of the fields are `Debug`.
+		#[rental(debug)]
+		pub struct SimpleRefDebug {
+			head: Box<i32>,
+			iref: &'head i32,
+		}
+
+		/// Similar to [`SimpleRef`](struct.SimpleRef.html), but with the `clone` flag enabled. This will provide a `Clone` impl for the struct as long as the prefix fields are `CloneStableDeref` and the suffix is `Clone` . Notice that the head is an `Arc`, since a clone of an `Arc` will deref to the same object as the original.
+		#[rental(clone)]
+		pub struct SimpleRefClone {
+			head: sync::Arc<i32>,
+			iref: &'head i32,
+		}
+
+		/// Identical to [`SimpleRef`](struct.SimpleRef.html), but with the `deref_suffix` flag enabled. This will provide a `Deref` impl for the struct, which will in turn deref the suffix. Notice that this flag also removes the `self` param from all methods, replacing it with an explicit param. This prevents any rental methods from blocking deref.
+		#[rental(deref_suffix)]
+		pub struct SimpleRefDeref {
+			head: Box<i32>,
+			iref: &'head i32,
+		}
+
+		/// Identical to [`SimpleMut`](struct.SimpleMut.html), but with the `deref_mut_suffix` flag enabled. This will provide a `DerefMut` impl for the struct, which will in turn deref the suffix.Notice that this flag also removes the `self` param from all methods, replacing it with an explicit param. This prevents any rental methods from blocking deref.
+		#[rental_mut(deref_mut_suffix)]
+		pub struct SimpleMutDeref {
+			head: Box<i32>,
+			iref: &'head mut i32,
+		}
+
+		/// Identical to [`SimpleRef`](struct.SimpleRef.html), but with the `covariant` flag enabled. For rental structs where the field types have covariant lifetimes, this will allow you to directly borrow the fields, as they can be safely reborrowed to a shorter lifetime. See the [`all`](struct.SimpleRefCovariant.html#method.all) and [`suffix`](struct.SimpleRefCovariant.html#method.suffix) methods.
+		#[rental(covariant)]
+		pub struct SimpleRefCovariant {
+			head: Box<i32>,
+			iref: &'head i32,
+		}
+
+		/// Identical to [`SimpleRef`](struct.SimpleRef.html), but with the `map_suffix` flag enabled. This will allow the type of the suffix to be changed by mapping it to another instantiation of the same struct with the different type param. See the [`map`](struct.SimpleRefMap.html#method.map), [`try_map`](struct.SimpleRefMap.html#method.try_map), and [`try_map_or_drop`](struct.SimpleRefMap.html#method.try_map_or_drop) methods.
+		#[rental(map_suffix = "T")]
+		pub struct SimpleRefMap<T: 'static> {
+			head: Box<i32>,
+			iref: &'head T,
+		}
+	}
+}
+
+
+#[cfg(feature = "std")]
+rental! {
+	/// Premade types for the most common use cases.
 	pub mod common {
 		use std::ops::DerefMut;
 		use stable_deref_trait::StableDeref;
 		use std::cell;
+		use std::sync;
 
 		/// Stores an owner and a shared reference in the same struct.
 		///
@@ -332,6 +417,63 @@ rental! {
 		pub struct RentRefCellMut<H: 'static + StableDeref + DerefMut, T: 'static> {
 			head: H,
 			suffix: cell::RefMut<'head, T>,
+		}
+
+
+		/// Stores a `Mutex` and a `MutexGuard` in the same struct.
+		///
+		/// ```rust
+		/// # extern crate rental;
+		/// # use rental::common::RentMutex;
+		/// # fn main() {
+		/// use std::sync;
+		///
+		/// let mut r = RentMutex::new(Box::new(sync::Mutex::new(5)), |c| c.lock().unwrap());
+		/// *r = 12;
+		/// assert_eq!(12, RentMutex::rent(&r, |c| **c));
+		/// # }
+		/// ```
+		#[rental(debug, clone, deref_mut_suffix, covariant, map_suffix = "T")]
+		pub struct RentMutex<H: 'static + StableDeref + DerefMut, T: 'static> {
+			head: H,
+			suffix: sync::MutexGuard<'head, T>,
+		}
+
+		/// Stores an `RwLock` and an `RwLockReadGuard` in the same struct.
+		///
+		/// ```rust
+		/// # extern crate rental;
+		/// # use rental::common::RentRwLock;
+		/// # fn main() {
+		/// use std::sync;
+		///
+		/// let r = RentRwLock::new(Box::new(sync::RwLock::new(5)), |c| c.read().unwrap());
+		/// assert_eq!(*r, RentRwLock::rent(&r, |c| **c));
+		/// # }
+		/// ```
+		#[rental(debug, clone, deref_suffix, covariant, map_suffix = "T")]
+		pub struct RentRwLock<H: 'static + StableDeref, T: 'static> {
+			head: H,
+			suffix: sync::RwLockReadGuard<'head, T>,
+		}
+
+		/// Stores an `RwLock` and an `RwLockWriteGuard` in the same struct.
+		///
+		/// ```rust
+		/// # extern crate rental;
+		/// # use rental::common::RentRwLockMut;
+		/// # fn main() {
+		/// use std::sync;
+		///
+		/// let mut r = RentRwLockMut::new(Box::new(sync::RwLock::new(5)), |c| c.write().unwrap());
+		/// *r = 12;
+		/// assert_eq!(12, RentRwLockMut::rent(&r, |c| **c));
+		/// # }
+		/// ```
+		#[rental(debug, clone, deref_mut_suffix, covariant, map_suffix = "T")]
+		pub struct RentRwLockMut<H: 'static + StableDeref, T: 'static> {
+			head: H,
+			suffix: sync::RwLockWriteGuard<'head, T>,
 		}
 	}
 }

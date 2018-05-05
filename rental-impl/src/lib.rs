@@ -749,6 +749,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 		quote_spanned!(struct_info.ident.span()/*.resolved_at(def_site)*/ =>
 			#[allow(dead_code)]
 			impl #struct_impl_params #item_ident #struct_impl_args #struct_where_clause {
+				/// Borrow all fields of the struct by reborrowing away the rental lifetimes.
+				///
+				/// This is safe because the lifetimes are verified to be covariant first.
 				pub fn all<'__s>(#self_lt_ref_param) -> <Self as __rental_prelude::#rental_trait_ident>::Borrow {
 					unsafe {
 						let _covariant = __rental_prelude::PhantomData::<#borrow_ident<#(#static_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>>;
@@ -758,6 +761,9 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 					}
 				}
 
+				/// Borrow the suffix field of the struct by reborrowing away the rental lifetimes.
+				///
+				/// This is safe because the lifetimes are verified to be covariant first.
 				pub fn suffix(#self_ref_param) -> <<Self as __rental_prelude::#rental_trait_ident>::Borrow as __rental_prelude::IntoSuffix>::Suffix {
 					&#self_arg.#suffix_ident
 				}
@@ -854,6 +860,17 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 						__rental_prelude::Result::Ok(#suffix_ident) => __rental_prelude::Result::Ok(#item_ident { #(#field_idents: #local_idents,)* }),
 						__rental_prelude::Result::Err(__e) => __rental_prelude::Result::Err(__rental_prelude::RentalError(__e, #head_ident)),
 					}
+				}
+
+				/// Try to map the suffix field of the rental struct to a different type.
+				///
+				/// As `map`, but the closure may fail. Upon failure, the struct is dropped and the error is returned.
+				pub fn try_map_or_drop<#mapped_suffix_param, __F, __E>(#self_move_param, __f: __F) -> __rental_prelude::Result<#mapped_ty, __E> #try_map_where_clause {
+					let #item_ident{ #(#field_idents,)* } = #self_arg;
+
+					let #suffix_ident = __f(#suffix_ident)?;
+
+					Ok(#item_ident{ #(#field_idents: #local_idents,)* })
 				}
 			}
 		).to_tokens(tokens);
