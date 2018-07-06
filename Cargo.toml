@@ -1,9 +1,9 @@
 [package]
 name = "rental"
-version = "0.5.0"
+version = "0.5.1"
 license = "MIT/Apache-2.0"
 authors = ["Jameson Ernst <jameson@jpernst.com>"]
-description = "A macro to generate safe self-referential structs."
+description = "A macro to generate safe self-referential structs, plus premade types for common use cases."
 readme = "README.md"
 keywords = ["lifetime", "ownership", "borrowing", "self", "reference"]
 categories = ["rust-patterns", "no-std"]
