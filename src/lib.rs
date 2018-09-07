@@ -2,7 +2,7 @@
 //! 
 //! # Overview
 //! It can sometimes occur in the course of designing an API that it would be convenient, or even necessary, to allow fields within a struct to hold references to other fields within that same struct. Rust's concept of ownership and borrowing is powerful, but can't express such a scenario yet.
-//!
+//! 
 //! Creating such a struct manually would require unsafe code to erase lifetime parameters from the field types. Accessing the fields directly would be completely unsafe as a result. This library addresses that issue by allowing access to the internal fields only under carefully controlled circumstances, through closures that are bounded by generic lifetimes to prevent infiltration or exfiltration of any data with an incorrect lifetime. In short, while the struct internally uses unsafe code to store the fields, the interface exposed to the consumer of the struct is completely safe. The implementation of this interface is subtle and verbose, hence the macro to automate the process.
 //! 
 //! The API of this crate consists of the [`rental`](macro.rental.html) macro that generates safe self-referential structs, a few example instantiations to demonstrate the API provided by such structs (see [`examples`](examples/index.html)), and a module of premade instantiations to cover common use cases (see [`common`](common/index.html)).

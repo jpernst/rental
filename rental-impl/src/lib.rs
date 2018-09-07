@@ -15,7 +15,7 @@ use quote::ToTokens;
 use proc_macro2::Span;
 
 
-/// From procedural_masquerade
+/// From `procedural_masquerade` crate
 #[doc(hidden)]
 fn _extract_input(derive_input: &str) -> &str {
 	let mut input = derive_input;
@@ -41,7 +41,7 @@ fn _extract_input(derive_input: &str) -> &str {
 #[allow(non_snake_case)]
 #[proc_macro_derive(__rental_traits)]
 pub fn __rental_traits(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	let mut tokens = quote::Tokens::new();
+	let mut tokens = proc_macro2::TokenStream::new();
 
 	let max_arity = _extract_input(&input.to_string()).parse::<usize>().expect("Input must be an integer literal.");
 	write_rental_traits(&mut tokens, max_arity);
@@ -54,7 +54,7 @@ pub fn __rental_traits(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 #[allow(non_snake_case)]
 #[proc_macro_derive(__rental_structs_and_impls)]
 pub fn __rental_structs_and_impls(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	let mut tokens = quote::Tokens::new();
+	let mut tokens = proc_macro2::TokenStream::new();
 
 	for item in syn::parse_str::<syn::File>(_extract_input(&input.to_string())).expect("Failed to parse items in module body.").items.iter() {
 		match *item {
@@ -75,7 +75,7 @@ pub fn __rental_structs_and_impls(input: proc_macro::TokenStream) -> proc_macro:
 }
 
 
-fn write_rental_traits(tokens: &mut quote::Tokens, max_arity: usize) {
+fn write_rental_traits(tokens: &mut proc_macro2::TokenStream, max_arity: usize) {
 	let call_site: Span = Span::call_site();
 
 	let mut lt_params = vec![syn::LifetimeDef::new(syn::Lifetime::new("'a0", call_site))];
@@ -98,7 +98,7 @@ fn write_rental_traits(tokens: &mut quote::Tokens, max_arity: usize) {
 }
 
 
-fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::ItemStruct) {
+fn write_rental_struct_and_impls(tokens: &mut proc_macro2::TokenStream, struct_info: &syn::ItemStruct) {
 	let def_site: Span = Span::call_site(); // FIXME: hygiene
 	let call_site: Span = Span::call_site();
 
@@ -111,7 +111,7 @@ fn write_rental_struct_and_impls(tokens: &mut quote::Tokens, struct_info: &syn::
 
 	let struct_generics = &struct_info.generics;
 	let struct_rlt_args = &fields.iter().fold(Vec::new(), |mut rlt_args, field| { rlt_args.extend(field.self_rlt_args.iter()); rlt_args });
-	if let Some(collide) = struct_rlt_args.iter().find(|rlt_arg| struct_generics.lifetimes().any(|lt_def| lt_def.lifetime == **rlt_arg)) {
+	if let Some(collide) = struct_rlt_args.iter().find(|rlt_arg| struct_generics.lifetimes().any(|lt_def| lt_def.lifetime == ***rlt_arg)) {
 		panic!("Struct `{}` lifetime parameter `{}` collides with rental lifetime.", struct_info.ident, collide);
 	}
 	let last_rlt_arg = &struct_rlt_args[struct_rlt_args.len() - 1];
@@ -890,9 +890,9 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 	let mut is_covariant = false;
 	let mut map_suffix_param = None;
 
-	if let Some(rental_pos) = rattribs.iter().filter(|attr| !attr.is_sugared_doc).position(|attr| match attr.interpret_meta().expect(&format!("Struct `{}` Attribute `{}` is not properly formatted.", struct_info.ident, attr.path.clone().into_tokens())) {
+	if let Some(rental_pos) = rattribs.iter()/*.filter(|attr| !attr.is_sugared_doc)*/.position(|attr| match attr.interpret_meta().expect(&format!("Struct `{}` Attribute `{}` is not properly formatted.", struct_info.ident, attr.path.clone().into_token_stream())) {
 		syn::Meta::Word(ref attr_ident) => {
-			is_rental_mut = match attr_ident.as_ref() {
+			is_rental_mut = match attr_ident.to_string().as_str() {
 				"rental" => false,
 				"rental_mut" => true,
 				_ => return false,
@@ -901,7 +901,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 			true
 		},
 		syn::Meta::List(ref list) => {
-			is_rental_mut = match list.ident.as_ref() {
+			is_rental_mut = match list.ident.to_string().as_str() {
 				"rental" => false,
 				"rental_mut" => true,
 				_ => return false,
@@ -911,7 +911,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 				if let syn::NestedMeta::Meta(ref meta) = **nested {
 					match *meta {
 						syn::Meta::Word(ref ident) => {
-							match ident.as_ref() {
+							match ident.to_string().as_str() {
 								"debug" => {
 									is_debug = true;
 									false
@@ -940,12 +940,12 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 							}
 						},
 						syn::Meta::NameValue(ref name_value) => {
-							match name_value.ident.as_ref() {
+							match name_value.ident.to_string().as_str() {
 								"map_suffix" => {
 									if let syn::Lit::Str(ref ty_param_str) = name_value.lit {
 										let ty_param_str = ty_param_str.value();
 										let ty_param = struct_info.generics.type_params().find(|ty_param| {
-											if ty_param.ident.as_ref() == ty_param_str {
+											if ty_param.ident.to_string() == ty_param_str {
 												return true;
 											}
 
@@ -1225,7 +1225,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 		}
 
 		rfields.push(RentalField{
-			name: field.ident.unwrap().clone(),
+			name: field.ident.as_ref().unwrap().clone(),
 			orig_ty: field.ty.clone(),
 			erased: syn::Field{
 				colon_token: field.colon_token,
@@ -1246,7 +1246,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 }
 
 
-fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
+fn make_borrow_quotes(self_arg: &proc_macro2::TokenStream, fields: &[RentalField], is_rental_mut: bool) -> Vec<BorrowQuotes> {
 	let call_site: Span = Span::call_site();
 
 	(0 .. fields.len()).map(|idx| {
@@ -1274,7 +1274,7 @@ fn make_borrow_quotes(self_arg: &quote::Tokens, fields: &[RentalField], is_renta
 
 			let (ref borrow_ty_hack, ref borrow_mut_ty_hack, ref field_args) = if let syn::Type::Path(syn::TypePath{ref qself, path: ref ty_path}) = *field_ty_hack {
 				let seg_idx = ty_path.segments.len() - 1;
-				let ty_name = &ty_path.segments[seg_idx].ident.as_ref();
+				let ty_name = &ty_path.segments[seg_idx].ident.to_string();
 
 				let mut borrow_ty_path = ty_path.clone();
 				borrow_ty_path.segments[seg_idx].ident = syn::Ident::new(&format!("{}_Borrow", ty_name), call_site);
@@ -1428,7 +1428,7 @@ fn make_tail_closure_quotes(fields: &[RentalField], borrows: &[BorrowQuotes], is
 			let prev_new_exprs_reverse = &borrows[0 .. idx].iter().map(|b| &b.new_expr).rev().collect::<Vec<_>>();;
 			let mut prev_rlt_args = Vec::<syn::Lifetime>::new();
 			for prev_field in &fields[0 .. idx] {
-				prev_rlt_args.extend(&prev_field.self_rlt_args);
+				prev_rlt_args.extend(prev_field.self_rlt_args.iter().cloned());
 			}
 			let prev_rlt_args = &prev_rlt_args;
 
@@ -1485,22 +1485,22 @@ struct Subrental {
 
 
 struct BorrowQuotes {
-	pub ty: quote::Tokens,
-	pub ty_hack: quote::Tokens,
-	pub expr: quote::Tokens,
-	pub mut_ty: quote::Tokens,
-	pub mut_ty_hack: quote::Tokens,
-	pub mut_expr: quote::Tokens,
-	pub new_ty: quote::Tokens,
-	pub new_expr: quote::Tokens,
+	pub ty: proc_macro2::TokenStream,
+	pub ty_hack: proc_macro2::TokenStream,
+	pub expr: proc_macro2::TokenStream,
+	pub mut_ty: proc_macro2::TokenStream,
+	pub mut_ty_hack: proc_macro2::TokenStream,
+	pub mut_expr: proc_macro2::TokenStream,
+	pub new_ty: proc_macro2::TokenStream,
+	pub new_expr: proc_macro2::TokenStream,
 }
 
 
 struct ClosureQuotes {
-	pub bound: quote::Tokens,
-	pub expr: quote::Tokens,
-	pub try_bound: quote::Tokens,
-	pub try_expr: quote::Tokens,
+	pub bound: proc_macro2::TokenStream,
+	pub expr: proc_macro2::TokenStream,
+	pub try_bound: proc_macro2::TokenStream,
+	pub try_expr: proc_macro2::TokenStream,
 }
 
 
