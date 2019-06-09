@@ -417,7 +417,7 @@ fn write_rental_struct_and_impls(tokens: &mut proc_macro2::TokenStream, struct_i
 
 			/// Execute a closure on the shared suffix of the struct.
 			///
-			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
+			/// The closure may return any value not bounded by one of the special rental lifetimes of the struct.
 			pub fn rent<__F, __R>(#self_ref_param, f: __F) -> __R where
 				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
@@ -427,7 +427,7 @@ fn write_rental_struct_and_impls(tokens: &mut proc_macro2::TokenStream, struct_i
 
 			/// Execute a closure on the mutable suffix of the struct.
 			///
-			/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
+			/// The closure may return any value not bounded by one of the special rental lifetimes of the struct.
 			pub fn rent_mut<__F, __R>(#self_mut_param, f: __F) -> __R where
 				__F: for<#(#suffix_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_suffix_ty) -> __R,
 				__R: #(#struct_lt_args +)*,
@@ -514,7 +514,7 @@ fn write_rental_struct_and_impls(tokens: &mut proc_macro2::TokenStream, struct_i
 
 				/// Execute a closure on shared borrows of the fields of the struct.
 				///
-				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
+				/// The closure may return any value not bounded by one of the special rental lifetimes of the struct.
 				pub fn rent_all<__F, __R>(#self_ref_param, f: __F) -> __R where
 					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
@@ -554,7 +554,7 @@ fn write_rental_struct_and_impls(tokens: &mut proc_macro2::TokenStream, struct_i
 
 				/// Execute a closure on shared borrows of the prefix fields and a mutable borrow of the suffix field of the struct.
 				///
-				/// The closure may return any value not bounded by one of the special rentail lifetimes of the struct.
+				/// The closure may return any value not bounded by one of the special rental lifetimes of the struct.
 				pub fn rent_all_mut<__F, __R>(#self_mut_param, f: __F) -> __R where
 					__F: for<#(#struct_rlt_args,)*> __rental_prelude::FnOnce(#borrow_mut_ident<#(#struct_rlt_args,)* #(#struct_lt_args,)* #(#struct_nonlt_args),*>) -> __R,
 					__R: #(#struct_lt_args +)*,
