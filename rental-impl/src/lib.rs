@@ -21,13 +21,13 @@ fn _extract_input(derive_input: &str) -> &str {
 	let mut input = derive_input;
 
 	for expected in &["#[allow(unused)]", "enum", "ProceduralMasqueradeDummyType", "{", "Input", "=", "(0,", "stringify!", "("] {
-		input = input.trim_left();
+		input = input.trim_start();
 		assert!(input.starts_with(expected), "expected prefix {:?} not found in {:?}", expected, derive_input);
 		input = &input[expected.len()..];
 	}
 
 	for expected in [")", ").0,", "}"].iter().rev() {
-		input = input.trim_right();
+		input = input.trim_end();
 		assert!(input.ends_with(expected), "expected suffix {:?} not found in {:?}", expected, derive_input);
 		let end = input.len() - expected.len();
 		input = &input[..end];
