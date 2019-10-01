@@ -907,7 +907,7 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 				_ => return false,
 			};
 
-			let mut leftover = list.nested.iter().filter(|nested| {
+			let leftover = list.nested.iter().filter(|nested| {
 				if let syn::NestedMeta::Meta(ref meta) = **nested {
 					match *meta {
 						syn::Meta::Path(ref ident) => {
