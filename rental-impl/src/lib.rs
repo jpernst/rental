@@ -890,58 +890,58 @@ fn get_struct_attribs(struct_info: &syn::ItemStruct) -> RentalStructAttribs
 	let mut is_covariant = false;
 	let mut map_suffix_param = None;
 
-	if let Some(rental_pos) = rattribs.iter()/*.filter(|attr| !attr.is_sugared_doc)*/.position(|attr| match attr.interpret_meta().expect(&format!("Struct `{}` Attribute `{}` is not properly formatted.", struct_info.ident, attr.path.clone().into_token_stream())) {
-		syn::Meta::Word(ref attr_ident) => {
-			is_rental_mut = match attr_ident.to_string().as_str() {
-				"rental" => false,
-				"rental_mut" => true,
+	if let Some(rental_pos) = rattribs.iter()/*.filter(|attr| !attr.is_sugared_doc)*/.position(|attr| match attr.parse_meta().expect(&format!("Struct `{}` Attribute `{}` is not properly formatted.", struct_info.ident, attr.path.clone().into_token_stream())) {
+		syn::Meta::Path(ref attr_ident) => {
+			is_rental_mut = match attr_ident.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) {
+				Some("rental") => false,
+				Some("rental_mut") => true,
 				_ => return false,
 			};
 
 			true
 		},
 		syn::Meta::List(ref list) => {
-			is_rental_mut = match list.ident.to_string().as_str() {
-				"rental" => false,
-				"rental_mut" => true,
+			is_rental_mut = match list.path.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) {
+				Some("rental") => false,
+				Some("rental_mut") => true,
 				_ => return false,
 			};
 
 			let mut leftover = list.nested.iter().filter(|nested| {
 				if let syn::NestedMeta::Meta(ref meta) = **nested {
 					match *meta {
-						syn::Meta::Word(ref ident) => {
-							match ident.to_string().as_str() {
-								"debug" => {
+						syn::Meta::Path(ref ident) => {
+							match ident.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) {
+								Some("debug") => {
 									is_debug = true;
 									false
 								},
-								"clone" => {
+								Some("clone") => {
 									is_clone = true;
 									false
 								},
-								"deref_suffix" => {
+								Some("deref_suffix") => {
 									is_deref_suffix = true;
 									false
 								},
-								"deref_mut_suffix" => {
+								Some("deref_mut_suffix") => {
 									is_deref_suffix = true;
 									is_deref_mut_suffix = true;
 									false
 								},
-								"covariant" => {
+								Some("covariant") => {
 									is_covariant = true;
 									false
 								},
-								"map_suffix" => {
+								Some("map_suffix") => {
 									panic!("Struct `{}` `map_suffix` flag expects ` = \"T\"`.", struct_info.ident);
 								},
 								_ => true,
 							}
 						},
 						syn::Meta::NameValue(ref name_value) => {
-							match name_value.ident.to_string().as_str() {
-								"map_suffix" => {
+							match name_value.path.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) {
+								Some("map_suffix") => {
 									if let syn::Lit::Str(ref ty_param_str) = name_value.lit {
 										let ty_param_str = ty_param_str.value();
 										let ty_param = struct_info.generics.type_params().find(|ty_param| {
@@ -1051,27 +1051,27 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 		let mut subrental = None;
 		let mut target_ty_hack = None;
 
-		if let Some(sr_pos) = rfattribs.iter().position(|attr| match attr.interpret_meta() {
-			Some(syn::Meta::List(ref list)) if list.ident == "subrental" => {
+		if let Some(sr_pos) = rfattribs.iter().position(|attr| match attr.parse_meta() {
+			Ok(syn::Meta::List(ref list)) if list.path.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) == Some("subrental") => {
 				panic!(
 					"`subrental` attribute on struct `{}` field `{}` expects ` = arity`.",
 					struct_info.ident,
 					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 				);
 			},
-			Some(syn::Meta::Word(ref word)) if word == "subrental" => {
+			Ok(syn::Meta::Path(ref word)) if word.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) == Some("subrental") => {
 				panic!(
 					"`subrental` attribute on struct `{}` field `{}` expects ` = arity`.",
 					struct_info.ident,
 					field.ident.as_ref().map(|ident| ident.to_string()).unwrap_or_else(|| field_idx.to_string())
 				);
 			},
-			Some(syn::Meta::NameValue(ref name_value)) if name_value.ident == "subrental" => {
+			Ok(syn::Meta::NameValue(ref name_value)) if name_value.path.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) == Some("subrental") => {
 				match name_value.lit {
 					syn::Lit::Int(ref arity) => {
 						subrental = Some(Subrental{
-							arity: arity.value() as usize, 
-							rental_trait_ident: syn::Ident::new(&format!("Rental{}", arity.value()), def_site),
+							arity: arity.base10_parse::<usize>().unwrap(),
+							rental_trait_ident: syn::Ident::new(&format!("Rental{}", arity.base10_parse::<usize>().unwrap()), def_site),
 						})
 					},
 					_ => panic!(
@@ -1097,8 +1097,8 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 		}
 
 		if let Some(tth_pos) = rfattribs.iter().position(|a|
-			match a.interpret_meta() {
-				Some(syn::Meta::NameValue(syn::MetaNameValue{ref ident, lit: syn::Lit::Str(ref ty_str), ..})) if ident == "target_ty" => {
+			match a.parse_meta() {
+				Ok(syn::Meta::NameValue(syn::MetaNameValue{ref path, lit: syn::Lit::Str(ref ty_str), ..})) if path.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) == Some("target_ty") => {
 					if let Ok(ty) = syn::parse_str::<syn::Type>(&ty_str.value()) {
 						target_ty_hack = Some(ty);
 
@@ -1129,7 +1129,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 			let guess = if let syn::Type::Path(ref ty_path) = field.ty {
 				match ty_path.path.segments[ty_path.path.segments.len() - 1] {
 					syn::PathSegment{ref ident, arguments: syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments{ref args, ..})} => {
-						if let Some(&syn::GenericArgument::Type(ref ty)) = args.first().map(|p| *p.value()) {
+						if let Some(&syn::GenericArgument::Type(ref ty)) = args.first() {
 							if ident == "Vec" {
 								Some(syn::Type::Slice(syn::TypeSlice{bracket_token: Default::default(), elem: Box::new(ty.clone())}))
 							} else {
@@ -1216,7 +1216,7 @@ fn prepare_fields(struct_info: &syn::ItemStruct) -> (Vec<RentalField>, syn::toke
 			eraser.fold_type(field.ty.clone())
 		};
 
-		if rfattribs.iter().any(|attr| match attr.interpret_meta() { Some(syn::Meta::NameValue(syn::MetaNameValue{ref ident, ..})) if ident == "doc" => false, _ => true }) {
+		if rfattribs.iter().any(|attr| match attr.parse_meta() { Ok(syn::Meta::NameValue(syn::MetaNameValue{ref path, ..})) if path.segments.first().map(|s| s.ident.to_string()).as_ref().map(String::as_str) == Some("doc") => false, _ => true }) {
 			panic!(
 				"Struct `{}` field `{}` must not have attributes other than one `subrental` and `target_ty`.",
 				struct_info.ident,
