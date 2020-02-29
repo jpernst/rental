@@ -1,14 +1,17 @@
 #[macro_use]
 extern crate rental;
 
-
 pub struct Foo {
 	i: i32,
 }
 
 impl Foo {
-	fn try_borrow(&self) -> Result<&i32, ()> { Ok(&self.i) }
-	fn fail_borrow(&self) -> Result<&i32, ()> { Err(()) }
+	fn try_borrow(&self) -> Result<&i32, ()> {
+		Ok(&self.i)
+	}
+	fn fail_borrow(&self) -> Result<&i32, ()> {
+		Err(())
+	}
 }
 
 pub struct FooRef<'i> {
@@ -16,13 +19,13 @@ pub struct FooRef<'i> {
 	misc: i32,
 }
 
-
 impl<'i> ::std::ops::Deref for FooRef<'i> {
 	type Target = i32;
 
-	fn deref(&self) -> &i32 { self.iref }
+	fn deref(&self) -> &i32 {
+		self.iref
+	}
 }
-
 
 rental! {
 	mod rentals {
@@ -36,27 +39,43 @@ rental! {
 	}
 }
 
-
 #[test]
 fn new() {
 	let foo = Foo { i: 5 };
-	let _ = rentals::SimpleRef::new(Box::new(foo), |foo| FooRef{ iref: &foo.i, misc: 12 });
+	let _ = rentals::SimpleRef::new(Box::new(foo), |foo| FooRef {
+		iref: &foo.i,
+		misc: 12,
+	});
 
 	let foo = Foo { i: 5 };
-	let sr: rental::RentalResult<rentals::SimpleRef, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| Ok(FooRef{ iref: foo.try_borrow()?, misc: 12 }));
+	let sr: rental::RentalResult<rentals::SimpleRef, (), _> =
+		rentals::SimpleRef::try_new(Box::new(foo), |foo| {
+			Ok(FooRef {
+				iref: foo.try_borrow()?,
+				misc: 12,
+			})
+		});
 	assert!(sr.is_ok());
 
 	let foo = Foo { i: 5 };
-	let sr: rental::RentalResult<rentals::SimpleRef, (), _> = rentals::SimpleRef::try_new(Box::new(foo), |foo| Ok(FooRef{ iref: foo.fail_borrow()?, misc: 12 }));
+	let sr: rental::RentalResult<rentals::SimpleRef, (), _> =
+		rentals::SimpleRef::try_new(Box::new(foo), |foo| {
+			Ok(FooRef {
+				iref: foo.fail_borrow()?,
+				misc: 12,
+			})
+		});
 	assert!(sr.is_err());
 }
-
 
 #[test]
 fn read() {
 	let foo = Foo { i: 5 };
 
-	let mut sr = rentals::SimpleRef::new(Box::new(foo), |foo| FooRef{ iref: &foo.i, misc: 12 });
+	let mut sr = rentals::SimpleRef::new(Box::new(foo), |foo| FooRef {
+		iref: &foo.i,
+		misc: 12,
+	});
 
 	{
 		let i: i32 = sr.rent(|iref| **iref);
@@ -92,12 +111,14 @@ fn read() {
 	}
 
 	{
-		let iref: Option<&mut i32> = sr.maybe_ref_rent_all_mut(|borrows| Some(&mut borrows.fr.misc));
+		let iref: Option<&mut i32> =
+			sr.maybe_ref_rent_all_mut(|borrows| Some(&mut borrows.fr.misc));
 		assert_eq!(iref, Some(&mut 57));
 	}
 
 	{
-		let iref: Result<&mut i32, ()> = sr.try_ref_rent_all_mut(|borrows| Ok(&mut borrows.fr.misc));
+		let iref: Result<&mut i32, ()> =
+			sr.try_ref_rent_all_mut(|borrows| Ok(&mut borrows.fr.misc));
 		assert_eq!(iref, Ok(&mut 57));
 	}
 }

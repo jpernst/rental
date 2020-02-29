@@ -1,18 +1,14 @@
 #[macro_use]
 extern crate rental;
 
+pub trait MyTrait {}
 
-pub trait MyTrait { }
+pub struct MyStruct {}
 
-
-pub struct MyStruct { }
-
-
-impl MyTrait for MyStruct { }
-
+impl MyTrait for MyStruct {}
 
 rental! {
-    pub mod rentals {
+	pub mod rentals {
 		use ::MyTrait;
 
 		#[rental]
@@ -23,11 +19,7 @@ rental! {
 	}
 }
 
-
 #[test]
 fn new() {
-	let _tr = rentals::RentTrait::new(
-		Box::new(MyStruct{}),
-		|t| &*t,
-	);
+	let _tr = rentals::RentTrait::new(Box::new(MyStruct {}), |t| &*t);
 }

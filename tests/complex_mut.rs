@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate rental;
 
-
 pub struct Foo {
 	i: i32,
 }
@@ -11,42 +10,64 @@ pub struct Bar<'a> {
 }
 
 pub struct Baz<'a: 'b, 'b> {
-	bar: &'b mut Bar<'a>
+	bar: &'b mut Bar<'a>,
 }
 
 pub struct Qux<'a: 'b, 'b: 'c, 'c> {
-	baz: &'c mut Baz<'a, 'b>
+	baz: &'c mut Baz<'a, 'b>,
 }
 
 pub struct Xyzzy<'a: 'b, 'b: 'c, 'c: 'd, 'd> {
-	qux: &'d mut Qux<'a, 'b, 'c>
+	qux: &'d mut Qux<'a, 'b, 'c>,
 }
 
-
 impl Foo {
-	pub fn borrow_mut<'a>(&'a mut self) -> Bar<'a> { Bar { foo: self } }
-	pub fn try_borrow_mut<'a>(&'a mut self) -> Result<Bar<'a>, ()> { Ok(Bar { foo: self }) }
-	pub fn fail_borrow_mut<'a>(&'a mut self) -> Result<Bar<'a>, ()> { Err(()) }
+	pub fn borrow_mut<'a>(&'a mut self) -> Bar<'a> {
+		Bar { foo: self }
+	}
+	pub fn try_borrow_mut<'a>(&'a mut self) -> Result<Bar<'a>, ()> {
+		Ok(Bar { foo: self })
+	}
+	pub fn fail_borrow_mut<'a>(&'a mut self) -> Result<Bar<'a>, ()> {
+		Err(())
+	}
 }
 
 impl<'a> Bar<'a> {
-	pub fn borrow_mut<'b>(&'b mut self) -> Baz<'a, 'b> { Baz { bar: self } }
-	pub fn try_borrow_mut<'b>(&'b mut self) -> Result<Baz<'a, 'b>, ()> { Ok(Baz { bar: self }) }
-	pub fn fail_borrow_mut<'b>(&'b mut self) -> Result<Baz<'a, 'b>, ()> { Err(()) }
+	pub fn borrow_mut<'b>(&'b mut self) -> Baz<'a, 'b> {
+		Baz { bar: self }
+	}
+	pub fn try_borrow_mut<'b>(&'b mut self) -> Result<Baz<'a, 'b>, ()> {
+		Ok(Baz { bar: self })
+	}
+	pub fn fail_borrow_mut<'b>(&'b mut self) -> Result<Baz<'a, 'b>, ()> {
+		Err(())
+	}
 }
 
 impl<'a: 'b, 'b> Baz<'a, 'b> {
-	pub fn borrow_mut<'c>(&'c mut self) -> Qux<'a, 'b, 'c> { Qux { baz: self } }
-	pub fn try_borrow_mut<'c>(&'c mut self) -> Result<Qux<'a, 'b, 'c>, ()> { Ok(Qux { baz: self }) }
-	pub fn fail_borrow_mut<'c>(&'c mut self) -> Result<Qux<'a, 'b, 'c>, ()> { Err(()) }
+	pub fn borrow_mut<'c>(&'c mut self) -> Qux<'a, 'b, 'c> {
+		Qux { baz: self }
+	}
+	pub fn try_borrow_mut<'c>(&'c mut self) -> Result<Qux<'a, 'b, 'c>, ()> {
+		Ok(Qux { baz: self })
+	}
+	pub fn fail_borrow_mut<'c>(&'c mut self) -> Result<Qux<'a, 'b, 'c>, ()> {
+		Err(())
+	}
 }
 
 impl<'a: 'b, 'b: 'c, 'c> Qux<'a, 'b, 'c> {
-	pub fn borrow_mut<'d>(&'d mut self) -> Xyzzy<'a, 'b, 'c, 'd> { Xyzzy { qux: self } }
-	pub fn try_borrow_mut<'d>(&'d mut self) -> Result<Xyzzy<'a, 'b, 'c, 'd>, ()> { Ok(Xyzzy { qux: self }) }
-	pub fn fail_borrow_mut<'d>(&'d mut self) -> Result<Xyzzy<'a, 'b, 'c, 'd>, ()> { Err(()) }
+	pub fn borrow_mut<'d>(&'d mut self) -> Xyzzy<'a, 'b, 'c, 'd> {
+		Xyzzy { qux: self }
+	}
+	pub fn try_borrow_mut<'d>(&'d mut self) -> Result<Xyzzy<'a, 'b, 'c, 'd>, ()> {
+		Ok(Xyzzy { qux: self })
+	}
+	pub fn fail_borrow_mut<'d>(&'d mut self) -> Result<Xyzzy<'a, 'b, 'c, 'd>, ()> {
+		Err(())
+	}
 }
-
 
 rental! {
 	mod rentals {
@@ -63,7 +84,6 @@ rental! {
 	}
 }
 
-
 #[test]
 fn new() {
 	let foo = Foo { i: 5 };
@@ -72,7 +92,7 @@ fn new() {
 		|foo| Box::new(foo.borrow_mut()),
 		|bar| Box::new(bar.borrow_mut()),
 		|baz| Box::new(baz.borrow_mut()),
-		|qux| qux.borrow_mut()
+		|qux| qux.borrow_mut(),
 	);
 
 	let foo = Foo { i: 5 };
@@ -81,7 +101,7 @@ fn new() {
 		|foo| foo.try_borrow_mut().map(|bar| Box::new(bar)),
 		|bar| bar.try_borrow_mut().map(|baz| Box::new(baz)),
 		|baz| baz.try_borrow_mut().map(|qux| Box::new(qux)),
-		|qux| qux.try_borrow_mut()
+		|qux| qux.try_borrow_mut(),
 	);
 	assert!(cm.is_ok());
 
@@ -91,11 +111,10 @@ fn new() {
 		|foo| foo.try_borrow_mut().map(|bar| Box::new(bar)),
 		|bar| bar.try_borrow_mut().map(|baz| Box::new(baz)),
 		|baz| baz.try_borrow_mut().map(|qux| Box::new(qux)),
-		|qux| qux.fail_borrow_mut()
+		|qux| qux.fail_borrow_mut(),
 	);
 	assert!(cm.is_err());
 }
-
 
 #[test]
 fn read() {
@@ -105,7 +124,7 @@ fn read() {
 		|foo| Box::new(foo.borrow_mut()),
 		|bar| Box::new(bar.borrow_mut()),
 		|baz| Box::new(baz.borrow_mut()),
-		|qux| qux.borrow_mut()
+		|qux| qux.borrow_mut(),
 	);
 	let i = cm.rent(|xyzzy| xyzzy.qux.baz.bar.foo.i);
 	assert_eq!(i, 5);
@@ -113,7 +132,6 @@ fn read() {
 	let iref = cm.ref_rent(|xyzzy| &xyzzy.qux.baz.bar.foo.i);
 	assert_eq!(*iref, 5);
 }
-
 
 #[test]
 fn write() {
@@ -123,7 +141,7 @@ fn write() {
 		|foo| Box::new(foo.borrow_mut()),
 		|bar| Box::new(bar.borrow_mut()),
 		|baz| Box::new(baz.borrow_mut()),
-		|qux| qux.borrow_mut()
+		|qux| qux.borrow_mut(),
 	);
 
 	{

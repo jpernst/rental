@@ -1,16 +1,18 @@
 #[macro_use]
 extern crate rental;
 
-
 pub struct Foo {
 	i: i32,
 }
 
 impl Foo {
-	fn try_borrow_mut(&mut self) -> Result<&mut i32, ()> { Ok(&mut self.i) }
-	fn fail_borrow_mut(&mut self) -> Result<&mut i32, ()> { Err(()) }
+	fn try_borrow_mut(&mut self) -> Result<&mut i32, ()> {
+		Ok(&mut self.i)
+	}
+	fn fail_borrow_mut(&mut self) -> Result<&mut i32, ()> {
+		Err(())
+	}
 }
-
 
 rental! {
 	mod rentals {
@@ -23,7 +25,6 @@ rental! {
 		}
 	}
 }
-
 
 #[test]
 fn new() {
@@ -39,7 +40,6 @@ fn new() {
 	assert!(sm.is_err());
 }
 
-
 #[test]
 fn read() {
 	let foo = Foo { i: 5 };
@@ -51,7 +51,6 @@ fn read() {
 	let iref: &i32 = sm.ref_rent(|iref| *iref);
 	assert_eq!(*iref, 5);
 }
-
 
 #[test]
 fn write() {

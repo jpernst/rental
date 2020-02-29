@@ -6,7 +6,6 @@ extern crate rental;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-
 pub struct Foo {
 	i: i32,
 	d: Rc<RefCell<String>>,
@@ -32,9 +31,13 @@ pub struct Xyzzy<'a: 'b, 'b: 'c, 'c: 'd, 'd> {
 	d: Rc<RefCell<String>>,
 }
 
-
 impl Foo {
-	pub fn borrow<'a>(&'a self) -> Bar<'a> { Bar { foo: self, d: self.d.clone() } }
+	pub fn borrow<'a>(&'a self) -> Bar<'a> {
+		Bar {
+			foo: self,
+			d: self.d.clone(),
+		}
+	}
 }
 
 impl Drop for Foo {
@@ -44,7 +47,12 @@ impl Drop for Foo {
 }
 
 impl<'a> Bar<'a> {
-	pub fn borrow<'b>(&'b self) -> Baz<'a, 'b> { Baz { bar: self, d: self.d.clone() } }
+	pub fn borrow<'b>(&'b self) -> Baz<'a, 'b> {
+		Baz {
+			bar: self,
+			d: self.d.clone(),
+		}
+	}
 }
 
 impl<'a> Drop for Bar<'a> {
@@ -54,7 +62,12 @@ impl<'a> Drop for Bar<'a> {
 }
 
 impl<'a: 'b, 'b> Baz<'a, 'b> {
-	pub fn borrow<'c>(&'c self) -> Qux<'a, 'b, 'c> { Qux { baz: self, d: self.d.clone() } }
+	pub fn borrow<'c>(&'c self) -> Qux<'a, 'b, 'c> {
+		Qux {
+			baz: self,
+			d: self.d.clone(),
+		}
+	}
 }
 
 impl<'a: 'b, 'b> Drop for Baz<'a, 'b> {
@@ -64,7 +77,12 @@ impl<'a: 'b, 'b> Drop for Baz<'a, 'b> {
 }
 
 impl<'a: 'b, 'b: 'c, 'c> Qux<'a, 'b, 'c> {
-	pub fn borrow<'d>(&'d self) -> Xyzzy<'a, 'b, 'c, 'd> { Xyzzy { qux: self, d: self.d.clone() } }
+	pub fn borrow<'d>(&'d self) -> Xyzzy<'a, 'b, 'c, 'd> {
+		Xyzzy {
+			qux: self,
+			d: self.d.clone(),
+		}
+	}
 }
 
 impl<'a: 'b, 'b: 'c, 'c> Drop for Qux<'a, 'b, 'c> {
@@ -78,7 +96,6 @@ impl<'a: 'b, 'b: 'c, 'c: 'd, 'd> Drop for Xyzzy<'a, 'b, 'c, 'd> {
 		self.d.borrow_mut().push_str("Xyzzy");
 	}
 }
-
 
 rental! {
 	pub mod rentals {
@@ -95,7 +112,6 @@ rental! {
 	}
 }
 
-
 #[test]
 fn drop_order() {
 	let d = Rc::new(RefCell::new(String::new()));
@@ -106,7 +122,7 @@ fn drop_order() {
 			|foo| Box::new(foo.borrow()),
 			|bar, _| Box::new(bar.borrow()),
 			|baz, _, _| Box::new(baz.borrow()),
-			|qux, _, _, _| qux.borrow()
+			|qux, _, _, _| qux.borrow(),
 		);
 	}
 	assert_eq!(*d.borrow(), "XyzzyQuxBazBarFoo");
@@ -119,11 +135,10 @@ fn drop_order() {
 			|foo| Box::new(foo.borrow()),
 			|bar, _| Box::new(bar.borrow()),
 			|baz, _, _| Box::new(baz.borrow()),
-			|qux, _, _, _| qux.borrow()
+			|qux, _, _, _| qux.borrow(),
 		);
 
 		let _head = r.into_head();
 	}
 	assert_eq!(*d.borrow(), "XyzzyQuxBazBarFoo");
 }
-

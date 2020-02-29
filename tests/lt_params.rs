@@ -1,17 +1,21 @@
 #[macro_use]
 extern crate rental;
 
-
 pub struct Foo<'a> {
 	i: &'a i32,
 }
 
 impl<'a> Foo<'a> {
-	fn borrow(&self) -> &i32 { self.i }
-	fn try_borrow(&self) -> Result<&i32, ()> { Ok(self.i) }
-	fn fail_borrow(&self) -> Result<&i32, ()> { Err(()) }
+	fn borrow(&self) -> &i32 {
+		self.i
+	}
+	fn try_borrow(&self) -> Result<&i32, ()> {
+		Ok(self.i)
+	}
+	fn fail_borrow(&self) -> Result<&i32, ()> {
+		Err(())
+	}
 }
-
 
 rental! {
 	mod rentals {
@@ -24,7 +28,6 @@ rental! {
 		}
 	}
 }
-
 
 #[test]
 fn new() {
@@ -41,7 +44,6 @@ fn new() {
 	let sr = rentals::LtParam::try_new(Box::new(foo), |foo| foo.fail_borrow());
 	assert!(sr.is_err());
 }
-
 
 #[test]
 fn read() {

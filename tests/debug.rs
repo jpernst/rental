@@ -1,12 +1,10 @@
 #[macro_use]
 extern crate rental;
 
-
 #[derive(Debug)]
 pub struct Foo {
 	i: i32,
 }
-
 
 rental! {
 	mod rentals {
@@ -25,7 +23,6 @@ rental! {
 		}
 	}
 }
-
 
 #[test]
 fn print() {

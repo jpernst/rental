@@ -1,11 +1,9 @@
 #[macro_use]
 extern crate rental;
 
-
 pub struct Foo {
 	i: i32,
 }
-
 
 rental! {
 	mod rentals {
@@ -25,7 +23,6 @@ rental! {
 	}
 }
 
-
 #[test]
 fn map() {
 	let foo = Foo { i: 5 };
@@ -38,5 +35,3 @@ fn map() {
 	let sm = sm.map(|fr| &mut fr.i);
 	assert_eq!(sm.rent(|ir| **ir), 12);
 }
-
-

@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate rental;
 
-
 rental! {
 	pub mod rent_vec_slice {
 		#[rental]
@@ -18,13 +17,11 @@ rental! {
 	}
 }
 
-
 #[test]
 fn new() {
 	let vec = vec![1, 2, 3];
 	let _ = rent_vec_slice::OwnedSlice::new(vec, |slice| slice);
 }
-
 
 #[test]
 fn read() {
@@ -34,7 +31,6 @@ fn read() {
 	assert_eq!(rvec.rent(|slice| slice[1]), 2);
 	assert_eq!(rvec.rent(|slice| slice[1]), rvec.rent(|slice| slice[1]));
 }
-
 
 #[test]
 fn write() {

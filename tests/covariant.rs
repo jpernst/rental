@@ -1,20 +1,16 @@
 #[macro_use]
 extern crate rental;
 
-
 //use std::marker::PhantomData;
-
 
 pub struct Foo {
 	i: i32,
 }
 
-
 //pub struct Invariant<'a> {
 //	iref: &'a i32,
 //	inv: PhantomData<&'a mut &'a ()>,
 //}
-
 
 rental! {
 	mod rentals {
@@ -40,7 +36,6 @@ rental! {
 	}
 }
 
-
 #[test]
 fn borrow() {
 	let foo = Foo { i: 5 };
@@ -48,5 +43,3 @@ fn borrow() {
 	let b = fr.all();
 	assert_eq!(**b.iref, 5);
 }
-
-

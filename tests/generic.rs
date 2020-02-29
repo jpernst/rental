@@ -1,16 +1,18 @@
 #[macro_use]
 extern crate rental;
 
-
 pub struct Foo<T: 'static> {
 	t: T,
 }
 
 impl<T: 'static> Foo<T> {
-	fn try_borrow(&self) -> Result<&T, ()> { Ok(&self.t) }
-	fn fail_borrow(&self) -> Result<&T, ()> { Err(()) }
+	fn try_borrow(&self) -> Result<&T, ()> {
+		Ok(&self.t)
+	}
+	fn fail_borrow(&self) -> Result<&T, ()> {
+		Err(())
+	}
 }
-
 
 rental! {
 	mod rentals {
@@ -23,7 +25,6 @@ rental! {
 		}
 	}
 }
-
 
 #[test]
 fn new() {
@@ -38,7 +39,6 @@ fn new() {
 	let sr = rentals::SimpleRef::try_new(Box::new(foo), |foo| foo.fail_borrow());
 	assert!(sr.is_err());
 }
-
 
 #[test]
 fn read() {
