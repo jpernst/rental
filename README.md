@@ -1,3 +1,6 @@
+# WARNING: This crate is NO LONGER MAINTAINED OR SUPPORTED
+I'm not going to yank the crate because it's still fit for its intended purpose, but as time goes on it will become increasingly out of step with Rust's evolution, so users are encouraged to explore other solutions. I will also not merge any pull requests, as the code is sufficiently complicated that I'm no longer confident in my ability to effectively review them. Rental can be considered "frozen" in its current state, and any further development will need to take place under a fork for whoever wishes to do so.
+
 # Rental - A macro to generate safe self-referential structs, plus premade types for common use cases.
 
 [Documentation](http://docs.rs/rental)
