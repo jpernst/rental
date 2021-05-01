@@ -92,7 +92,7 @@ macro_rules! define_rental_traits {
 		#[allow(unused)]
 		#[derive(__rental_traits)]
 		enum ProceduralMasqueradeDummyType {
-			Input = (0, stringify!($max_arity)).0
+			Input = (0, stringify!($max_arity)).0,
 		}
 	};
 }
@@ -238,7 +238,7 @@ macro_rules! rental {
 			#[allow(unused)]
 			#[derive(__rental_structs_and_impls)]
 			enum ProceduralMasqueradeDummyType {
-				Input = (0, stringify!($($body)*)).0
+				Input = (0, stringify!($($body)*)).0,
 			}
 		}
 	};
@@ -256,7 +256,7 @@ macro_rules! rental {
 			#[allow(unused)]
 			#[derive(__rental_structs_and_impls)]
 			enum ProceduralMasqueradeDummyType {
-				Input = (0, stringify!($($body)*)).0
+				Input = (0, stringify!($($body)*)).0,
 			}
 		}
 	};
@@ -274,7 +274,7 @@ macro_rules! rental {
 			#[allow(unused)]
 			#[derive(__rental_structs_and_impls)]
 			enum ProceduralMasqueradeDummyType {
-				Input = (0, stringify!($($body)*)).0
+				Input = (0, stringify!($($body)*)).0,
 			}
 		}
 	};
